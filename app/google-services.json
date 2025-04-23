@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "688301147768",
+    "project_id": "web-traffic-general",
+    "storage_bucket": "web-traffic-general.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:688301147768:android:0ce352c50b69da09024f8d",
+        "android_client_info": {
+          "package_name": "com.alpha.mealplannertest"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCITuun_6-8W0ik1Hlg7zul34Fgo_Npy-Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      },
+      "admob_app_id": "ca-app-pub-1499424387840063~6493152583"
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:688301147768:android:9196b459c6f78d11024f8d",
+        "android_client_info": {
+          "package_name": "com.game.bubblepop"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCITuun_6-8W0ik1Hlg7zul34Fgo_Npy-Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
