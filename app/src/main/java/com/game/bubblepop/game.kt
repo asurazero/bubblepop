@@ -1,6 +1,7 @@
 package com.game.bubblepop
 
 import android.content.Context
+import android.graphics.RectF
 import android.media.AudioAttributes
 import android.media.SoundPool
 import android.util.Log
@@ -20,7 +21,7 @@ interface GameOverListener {
 
 var gameOverListener: GameOverListener? = null
 class Game(private val screenWidth: Float, private val screenHeight: Float, private val context: Context) {
-        // Public getter for gameActive
+    // Public getter for gameActive
 
     fun isGameActive(): Boolean {
         return gameActive
@@ -103,7 +104,16 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
     private val executor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
     private val shrinkingProbability = 0.2f
 
-
+    // Red Rectangle properties
+    private val rectangleWidth = 2000f
+    private val rectangleHeight = 2000000f
+    private var rectangleX = (screenWidth - rectangleWidth) / 2
+    private var rectangleY = screenHeight + 50 // Start below the screen
+    private val rectangleRiseSpeed = 0.1f
+    private var isRectangleActive = false
+    private val rectangleActivationDelay = 5000L // 5 seconds delay after game starts
+    private var rectangleActivationTime = System.currentTimeMillis() + rectangleActivationDelay
+    private val negativeBubbleDescentAmount = 75f
 
 
     init {
@@ -234,7 +244,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 initialRadius = initialBubbleRadius,
                 x = x,
                 y = finalY,
-                lifespan = Random.nextLong(3000, 8000),
+                lifespan = Random.nextLong(9999, 99999),
                 powerUpType = powerUpType,
                 bubbleType = bubbleType,
                 isShrinking = isShrinking
@@ -249,6 +259,11 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
 
         val currentTime = System.currentTimeMillis()
 
+        // Activate the rectangle after the delay
+        if (!isRectangleActive && currentTime >= rectangleActivationTime) {
+            isRectangleActive = true
+        }
+
         if (currentTime - lastSpawnTime > currentSpawnInterval) {
             addRandomBubble()
             lastSpawnTime = currentTime
@@ -256,14 +271,32 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
 
         val poppedBubbles = mutableListOf<Bubble>()
         val removedNegativeBubbles = mutableListOf<Bubble>()
+
+        // Handle bubble updates and collision with the rectangle
+        val rectangleRect = RectF(rectangleX, rectangleY, rectangleX + rectangleWidth, rectangleY + rectangleHeight)
+
         for (bubble in bubbles) {
+            val bubbleRect = RectF(bubble.x - bubble.radius, bubble.y - bubble.radius, bubble.x + bubble.radius, bubble.y + bubble.radius)
+
+            if (isRectangleActive && RectF.intersects(bubbleRect, rectangleRect)) {
+                missedBubbles++ // Increment missed bubbles when a bubble hits the rectangle
+                missedBubbleChangeListener?.onMissedBubbleCountChanged(missedBubbles)
+                if (bubble.bubbleType == BubbleType.NORMAL) {
+                    poppedBubbles.add(bubble)
+                } else if (bubble.bubbleType == BubbleType.NEGATIVE) {
+                    removedNegativeBubbles.add(bubble)
+                } else if (bubble.bubbleType == BubbleType.POWER_UP) {
+                    poppedBubbles.add(bubble)
+                }
+                continue // Move to the next bubble
+            }
+
+            // Regular bubble movement and shrinking if not popped by the rectangle
             if (bubble.bubbleType == BubbleType.NORMAL || bubble.bubbleType == BubbleType.POWER_UP) {
                 if (bubble.y > screenHeight / 2) { // Only shrink if past halfway
                     bubble.radius -= currentBubbleGrowthRate * (currentTime - (bubble.creationTime + (currentTime - lastUpdateTime))) * shrinkingSpeedMultiplier
                     if (bubble.radius <= 0) {
                         poppedBubbles.add(bubble)
-                        missedBubbles++
-                        missedBubbleChangeListener?.onMissedBubbleCountChanged(missedBubbles)
                         continue
                     }
                 } else {
@@ -273,7 +306,6 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                         bubble.radius = maxBubbleRadius
                     }
                 }
-
 
                 // Make bubbles red and pop faster after level 50
                 if (level > 50) {
@@ -285,8 +317,6 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
 
                 if (bubble.shouldPop()) {
                     poppedBubbles.add(bubble)
-                    missedBubbles++
-                    missedBubbleChangeListener?.onMissedBubbleCountChanged(missedBubbles)
                 }
                 //make bubbles always fall
                 if (bubble.y < screenHeight) {
@@ -294,25 +324,22 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 }
                 if (bubble.y >= screenHeight) { //if a bubble reaches the bottom
                     poppedBubbles.add(bubble) //add it to the popped bubbles list
-                    missedBubbles++
-                    missedBubbleChangeListener?.onMissedBubbleCountChanged(missedBubbles)
                 }
-
-
             } else if (bubble.bubbleType == BubbleType.NEGATIVE) {
                 bubble.y += negativeBubbleSpeed
                 if (bubble.y > screenHeight + bubble.radius) {
                     removedNegativeBubbles.add(bubble)
-                    missedBubbles++
-                    missedBubbleChangeListener?.onMissedBubbleCountChanged(missedBubbles)
                 }
-            } else if (bubble.bubbleType == BubbleType.NORMAL) {
-                //  Move regular bubbles downwards
-                bubble.y += negativeBubbleSpeed;
             }
         }
         bubbles.removeAll(poppedBubbles)
         bubbles.removeAll(removedNegativeBubbles)
+
+        // Update rectangle position
+        if (isRectangleActive ) { // Stop at a certain point
+            rectangleY -= rectangleRiseSpeed
+        }
+
         lastUpdateTime = currentTime
 
         if (missedBubbles >= missedBubbleThreshold) {
@@ -322,7 +349,6 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             soundPool.release()
         }
     }
-
 
 
 
@@ -338,6 +364,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 missedBubbleChangeListener?.onMissedBubbleCountChanged(missedBubbles)
                 Log.d("Game", "Clicked -1 bubble! Missed count reduced to $missedBubbles")
                 soundPool.play(coinRingSoundId, 1f, 1f, 0, 0, 1f) // Play coin ring sound
+                rectangleY += negativeBubbleDescentAmount // Move the rectangle down
             } else {
                 Log.d("Game", "Clicked -1 bubble! Missed count already at 0.")
             }
@@ -356,6 +383,9 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 musicPlayer.playShortSegment()
                 soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f) // Play pop sound for power-up
                 redrawListener?.onRedrawRequested()
+                Log.d("Game", "Clicked -1 bubble! Missed count reduced to $missedBubbles")
+                soundPool.play(coinRingSoundId, 1f, 1f, 0, 0, 1f) // Play coin ring sound
+                rectangleY += negativeBubbleDescentAmount
                 return // Exit after handling power-up
             }
         }
@@ -544,7 +574,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                     }
                 }
             } catch (e: Exception) {
-                Log.e("Game", "Error in game loop: ${e.message}", e)
+                Log.e("Game", "Error ingame loop: ${e.message}", e)
             }
         }, 0, 16, TimeUnit.MILLISECONDS) // ~60 FPS, adjust as needed.  Make this a property.
     }
@@ -557,6 +587,31 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             Log.e("Game", "Error waiting for executor termination: ${e.message}", e)
         }
         soundPool.release()
+    }
+
+    // Getter methods for the red rectangle properties
+    fun getRectangleX(): Float {
+        return rectangleX
+    }
+
+    fun getRectangleY(): Float {
+        return rectangleY
+    }
+
+    fun getRectangleWidth(): Float {
+        return rectangleWidth
+    }
+
+    fun getRectangleHeight(): Float {
+        return rectangleHeight
+    }
+
+    fun isRectangleActive(): Boolean {
+        return isRectangleActive
+    }
+
+    fun getMissedBubbleThreshold(): Int {
+        return missedBubbleThreshold
     }
 }
 

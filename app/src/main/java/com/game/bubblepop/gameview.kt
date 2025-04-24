@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import android.graphics.RectF
 
 class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), Game.RedrawListener {
     private var gameContext: Context? = null
@@ -57,6 +58,13 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
         color = Color.DKGRAY
         textSize = 36f
     }
+
+    // Paint for the red rectangle
+    private val rectanglePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.RED
+        style = Paint.Style.FILL
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
@@ -85,7 +93,6 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                     }
                     canvas.drawCircle(bubble.x, bubble.y, bubble.radius * 0.6f, powerUpPaint)
                 }
-                print("git")
                 if (bubble.bubbleType == BubbleType.NEGATIVE) {
                     val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                         style = Paint.Style.STROKE
@@ -112,6 +119,16 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                     canvas.drawCircle(bubble.x, bubble.y, innerCircleRadius, innerPaint)
                 }
             }
+
+            // Draw the red rectangle if it's active
+            if (currentGame.isRectangleActive()) {
+                val rectX = currentGame.getRectangleX()
+                val rectY = currentGame.getRectangleY()
+                val rectWidth = currentGame.getRectangleWidth()
+                val rectHeight = currentGame.getRectangleHeight()
+                canvas.drawRect(rectX, rectY, rectX + rectWidth, rectY + rectHeight, rectanglePaint)
+            }
+
             canvas.drawText("Score: ${currentGame.getScore()}", 50f, 100f, scorePaint)
             canvas.drawText("Level: ${currentGame.getLevel()}", 50f, 150f, levelPaint)
             canvas.drawText("Missed: ${currentGame.getMissedBubbles()}", 50f, 200f, scorePaint)
@@ -123,4 +140,19 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
         }
     }
 
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        game?.let { currentGame ->
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastClickTime > clickDebounceDelay) {
+                    val x = event.x
+                    val y = event.y
+                    currentGame.processClick(x, y)
+                    lastClickTime = currentTime
+                    return true // Consume the event
+                }
+            }
+        }
+        return super.onTouchEvent(event)
+    }
 }
