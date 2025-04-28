@@ -23,9 +23,9 @@
               <option name="connection">
                 <ConnectionSetting>
                   <option name="appId" value="com.game.bubblepop" />
-                  <option name="mobileSdkAppId" value="1:688301147768:android:9196b459c6f78d11024f8d" />
-                  <option name="projectId" value="web-traffic-general" />
-                  <option name="projectNumber" value="688301147768" />
+                  <option name="mobileSdkAppId" value="1:486210485239:android:033995c7d52984b268ccf2" />
+                  <option name="projectId" value="bubblepop-cd112" />
+                  <option name="projectNumber" value="486210485239" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />
