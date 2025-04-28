@@ -15,7 +15,11 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
     lateinit var game: Game // Declare Game as lateinit var
     private var lastClickTime = 0L
     private val clickDebounceDelay = 200L
-
+    private var initialTouchX = 0f  // Store initial touch position
+    private var initialTouchY = 0f
+    private var touchOffsetX = 0f // Store offset from bomb center
+    private var touchOffsetY = 0f
+    private var isCurrentlyDragging = false
     init {
         gameContext = context
     }
@@ -64,12 +68,15 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
         color = Color.RED
         style = Paint.Style.FILL
     }
-
+    private val bombPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply{ //added bomb paint here
+        color = Color.BLACK
+        style = Paint.Style.FILL
+    }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
         game?.let { currentGame ->
-            // Draw the background (optional)
+            // Draw the background
             canvas.drawColor(Color.WHITE)
 
             for (bubble in currentGame.getBubbles()) {
@@ -77,7 +84,7 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                     BubbleType.NORMAL -> if (bubble.isAboutToPop()) approachingPopPaint else normalPaint
                     BubbleType.NEGATIVE -> negativePaint
                     BubbleType.POWER_UP -> normalPaint
-                    else -> normalPaint // Added else branch as a fallback
+                    else -> normalPaint
                 }
                 canvas.drawCircle(bubble.x, bubble.y, bubble.radius, paintToUse)
 
@@ -89,6 +96,7 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                             PowerUpType.SLOW_TIME -> Color.YELLOW
                             PowerUpType.EXTRA_LIFE -> Color.GREEN
                             PowerUpType.GROWTH_STOPPER -> Color.CYAN
+                            PowerUpType.GREEN_RECTANGLE -> Color.GREEN
                         }
                     }
                     canvas.drawCircle(bubble.x, bubble.y, bubble.radius * 0.6f, powerUpPaint)
@@ -96,20 +104,19 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                 if (bubble.bubbleType == BubbleType.NEGATIVE) {
                     val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                         style = Paint.Style.STROKE
-                        color = Color.BLACK // Darker outline
+                        color = Color.BLACK
                         strokeWidth = bubble.radius * 0.1f
                     }
-                    canvas.drawCircle(bubble.x, bubble.y, bubble.radius, strokePaint) // Draw an outline
+                    canvas.drawCircle(bubble.x, bubble.y, bubble.radius, strokePaint)
 
                     val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                         color = Color.BLACK
-                        textSize = bubble.radius * 0.6f // Slightly smaller text
+                        textSize = bubble.radius * 0.6f
                         textAlign = Paint.Align.CENTER
-                        typeface = android.graphics.Typeface.DEFAULT_BOLD // Make it bold
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
                     }
                     canvas.drawText("-1", bubble.x, bubble.y + textPaint.textSize / 3, textPaint)
 
-                    // Add some subtle inner details (optional)
                     val innerCircleRadius = bubble.radius * 0.4f
                     val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                         style = Paint.Style.STROKE
@@ -119,15 +126,22 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                     canvas.drawCircle(bubble.x, bubble.y, innerCircleRadius, innerPaint)
                 }
             }
-
-            // Draw the red rectangle if it's active
-            if (currentGame.isRectangleActive()) {
-                val rectX = currentGame.getRectangleX()
-                val rectY = currentGame.getRectangleY()
-                val rectWidth = currentGame.getRectangleWidth()
-                val rectHeight = currentGame.getRectangleHeight()
-                canvas.drawRect(rectX, rectY, rectX + rectWidth, rectY + rectHeight, rectanglePaint)
+            //draw bomb
+            if(currentGame.isDraggingBomb()){ //changed to use the public method
+                val bombData = currentGame.getBombDetailsForDrawing()
+                canvas.drawCircle(bombData.first, bombData.second, bombData.third, bombPaint)
             }
+
+            val rectPaint = Paint()
+            rectPaint.color = currentGame.rectangleColor
+            rectPaint.style = Paint.Style.FILL
+            canvas.drawRect(
+                currentGame.getRectangleX(),
+                currentGame.getRectangleY(),
+                currentGame.getRectangleX() + currentGame.getRectangleWidth(),
+                currentGame.getRectangleY() + currentGame.getRectangleHeight(),
+                rectPaint
+            )
 
             canvas.drawText("Score: ${currentGame.getScore()}", 50f, 100f, scorePaint)
             canvas.drawText("Level: ${currentGame.getLevel()}", 50f, 150f, levelPaint)
@@ -140,16 +154,45 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
         }
     }
 
+
+
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         game?.let { currentGame ->
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                val currentTime = System.currentTimeMillis()
-                if (currentTime - lastClickTime > clickDebounceDelay) {
-                    val x = event.x
-                    val y = event.y
-                    currentGame.processClick(x, y)
-                    lastClickTime = currentTime
-                    return true // Consume the event
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    val currentTime = System.currentTimeMillis()
+                    if (currentTime - lastClickTime > clickDebounceDelay) {
+                        val x = event.x
+                        val y = event.y
+                        currentGame.processClick(x, y)
+                        lastClickTime = currentTime
+                        if (currentGame.isDraggingBomb()) {
+                            initialTouchX = event.x
+                            initialTouchY = event.y
+                            val bombData = currentGame.getBombDetailsForDrawing()
+                            touchOffsetX = initialTouchX - bombData.first
+                            touchOffsetY = initialTouchY - bombData.second
+                            isCurrentlyDragging = true
+                        }
+                        return true
+                    }
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (currentGame.isDraggingBomb()) {
+                        // Update bomb position, account for initial offset
+                        currentGame.setBombCoordinates(event.x - touchOffsetX, event.y - touchOffsetY)
+                        currentGame.redrawListener?.onRedrawRequested()
+                        return true
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (currentGame.isDraggingBomb()) {
+                        currentGame.setDraggingBomb(false)
+                        isCurrentlyDragging = false
+                        currentGame.redrawListener?.onRedrawRequested()
+                        return true
+                    }
                 }
             }
         }

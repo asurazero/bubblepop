@@ -59,6 +59,7 @@ class Bubble(
                     PowerUpType.SLOW_TIME -> Color.YELLOW
                     PowerUpType.EXTRA_LIFE -> Color.GREEN
                     PowerUpType.GROWTH_STOPPER -> Color.CYAN
+                    PowerUpType.GREEN_RECTANGLE->Color.GREEN
                 }
             }
             canvas.drawCircle(x, y, radius * 0.6f, powerUpPaint)

@@ -12,6 +12,7 @@ class PowerUp(var x: Float, var y: Float, var radius: Float, val type: PowerUpTy
             PowerUpType.SLOW_TIME -> Color.YELLOW
             PowerUpType.EXTRA_LIFE -> Color.GREEN
             PowerUpType.GROWTH_STOPPER -> Color.CYAN
+            PowerUpType.GREEN_RECTANGLE->Color.GREEN
         }
     }
 
@@ -30,5 +31,6 @@ enum class PowerUpType {
     BOMB,
     SLOW_TIME,
     EXTRA_LIFE,
-    GROWTH_STOPPER
+    GROWTH_STOPPER,
+    GREEN_RECTANGLE // New power-up type
 }
