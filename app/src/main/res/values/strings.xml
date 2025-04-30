@@ -3,4 +3,5 @@
     <string name="admob_app_id">ca-app-pub-1499424387840063~4550971139</string>
     <string name="interstitial_id">ca-app-pub-1499424387840063/3237889460</string>
     <string name="inter_test">ca-app-pub-3940256099942544/1033173712</string>
+    <string name="OK">ok</string>
 </resources>

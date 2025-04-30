@@ -9,6 +9,7 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import android.graphics.RectF
+import androidx.media3.common.util.Log
 
 class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), Game.RedrawListener {
     private var gameContext: Context? = null
@@ -79,59 +80,76 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
             // Draw the background
             canvas.drawColor(Color.WHITE)
 
-            for (bubble in currentGame.getBubbles()) {
-                val paintToUse = when (bubble.bubbleType) {
-                    BubbleType.NORMAL -> if (bubble.isAboutToPop()) approachingPopPaint else normalPaint
-                    BubbleType.NEGATIVE -> negativePaint
-                    BubbleType.POWER_UP -> normalPaint
-                    else -> normalPaint
-                }
-                canvas.drawCircle(bubble.x, bubble.y, bubble.radius, paintToUse)
+            // Bomb logic:  Check for bomb state *before* drawing bubbles
+            if (currentGame.isBombActive() && System.currentTimeMillis() > currentGame.getBombEndTime()) {
+                currentGame.setBombActive(false)
+                currentGame.setBombStopped(false)
+            }
 
-                bubble.powerUpType?.let { powerUp ->
-                    val powerUpPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        style = Paint.Style.FILL
-                        color = when (powerUp) {
-                            PowerUpType.BOMB -> Color.BLACK
-                            PowerUpType.SLOW_TIME -> Color.YELLOW
-                            PowerUpType.EXTRA_LIFE -> Color.GREEN
-                            PowerUpType.GROWTH_STOPPER -> Color.CYAN
-                            PowerUpType.GREEN_RECTANGLE -> Color.GREEN
+            // Get the bubbles list *once* here
+            val bubbles = currentGame.getBubbles()
+            for (bubble in bubbles) {
+                // Null check for the bubble object
+                if (bubble != null) {
+                    val paintToUse = when (bubble.bubbleType) {
+                        BubbleType.NORMAL -> if (bubble.isAboutToPop()) approachingPopPaint else normalPaint
+                        BubbleType.NEGATIVE -> negativePaint
+                        BubbleType.POWER_UP -> normalPaint
+                        else -> normalPaint // Add a default case, though it shouldn't happen
+                    }
+                    //check for the max radius
+                    val drawRadius = Math.min(bubble.radius, 200f)
+                    canvas.drawCircle(bubble.x, bubble.y, drawRadius, paintToUse)
+
+                    bubble.powerUpType?.let { powerUp ->
+                        val powerUpPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            style = Paint.Style.FILL
+                            color = when (powerUp) {
+                                PowerUpType.BOMB -> Color.BLACK
+                                PowerUpType.SLOW_TIME -> Color.YELLOW
+                                PowerUpType.EXTRA_LIFE -> Color.GREEN
+                                PowerUpType.GROWTH_STOPPER -> Color.CYAN
+                                PowerUpType.GREEN_RECTANGLE -> Color.GREEN
+                            }
                         }
+                        canvas.drawCircle(bubble.x, bubble.y, drawRadius * 0.6f, powerUpPaint)
                     }
-                    canvas.drawCircle(bubble.x, bubble.y, bubble.radius * 0.6f, powerUpPaint)
-                }
-                if (bubble.bubbleType == BubbleType.NEGATIVE) {
-                    val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        style = Paint.Style.STROKE
-                        color = Color.BLACK
-                        strokeWidth = bubble.radius * 0.1f
-                    }
-                    canvas.drawCircle(bubble.x, bubble.y, bubble.radius, strokePaint)
+                    if (bubble.bubbleType == BubbleType.NEGATIVE) {
+                        val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            style = Paint.Style.STROKE
+                            color = Color.BLACK
+                            strokeWidth = drawRadius * 0.1f
+                        }
+                        canvas.drawCircle(bubble.x, bubble.y, drawRadius, strokePaint)
 
-                    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        color = Color.BLACK
-                        textSize = bubble.radius * 0.6f
-                        textAlign = Paint.Align.CENTER
-                        typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    }
-                    canvas.drawText("-1", bubble.x, bubble.y + textPaint.textSize / 3, textPaint)
+                        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = Color.BLACK
+                            textSize = drawRadius * 0.6f
+                            textAlign = Paint.Align.CENTER
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        }
+                        canvas.drawText("-1", bubble.x, bubble.y + textPaint.textSize / 3, textPaint)
 
-                    val innerCircleRadius = bubble.radius * 0.4f
-                    val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        style = Paint.Style.STROKE
-                        color = Color.DKGRAY
-                        strokeWidth = bubble.radius * 0.05f
+                        val innerCircleRadius = drawRadius * 0.4f
+                        val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            style = Paint.Style.STROKE
+                            color = Color.DKGRAY
+                            strokeWidth = drawRadius * 0.05f
+                        }
+                        canvas.drawCircle(bubble.x, bubble.y, innerCircleRadius, innerPaint)
                     }
-                    canvas.drawCircle(bubble.x, bubble.y, innerCircleRadius, innerPaint)
+                } else {
+                    Log.w("GameView", "Encountered a null bubble in the list!")
                 }
             }
-            //draw bomb
-            if(currentGame.isDraggingBomb()){ //changed to use the public method
+
+            // Draw bomb (check if active *before* getting details)
+            if (currentGame.isBombActive()) {
                 val bombData = currentGame.getBombDetailsForDrawing()
                 canvas.drawCircle(bombData.first, bombData.second, bombData.third, bombPaint)
             }
 
+            // Draw rectangle
             val rectPaint = Paint()
             rectPaint.color = currentGame.rectangleColor
             rectPaint.style = Paint.Style.FILL
@@ -143,16 +161,19 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                 rectPaint
             )
 
+            // Draw score and level
             canvas.drawText("Score: ${currentGame.getScore()}", 50f, 100f, scorePaint)
             canvas.drawText("Level: ${currentGame.getLevel()}", 50f, 150f, levelPaint)
             canvas.drawText("Missed: ${currentGame.getMissedBubbles()}", 50f, 200f, scorePaint)
 
+            // Update game state and request redraw
             currentGame.update()
             if (currentGame.getBubbles().isNotEmpty() || !currentGame.isGameOver()) {
                 postInvalidateOnAnimation()
             }
         }
     }
+
 
 
 
@@ -165,35 +186,24 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                     if (currentTime - lastClickTime > clickDebounceDelay) {
                         val x = event.x
                         val y = event.y
-                        currentGame.processClick(x, y)
-                        lastClickTime = currentTime
-                        if (currentGame.isDraggingBomb()) {
-                            initialTouchX = event.x
-                            initialTouchY = event.y
-                            val bombData = currentGame.getBombDetailsForDrawing()
-                            touchOffsetX = initialTouchX - bombData.first
-                            touchOffsetY = initialTouchY - bombData.second
-                            isCurrentlyDragging = true
+
+                        if (currentGame.isBombActive()  && currentGame.isPointInsideBomb(x, y)) {
+                            // Bomb tapped! Stop the bomb and trigger the pop.
+                            currentGame.setBombStopped(true)
+                            currentGame.popAdjacentBubbles()
+                            currentGame.setBombActive(false) // Deactivate the bomb after popping
+                            currentGame.redrawListener?.onRedrawRequested()
+                            return true // Consume the touch event
+                        } else {
+                            // Handle regular clicks (e.g., shooting bubbles)
+                            currentGame.processClick(x, y)
+                            lastClickTime = currentTime
                         }
                         return true
                     }
                 }
-                MotionEvent.ACTION_MOVE -> {
-                    if (currentGame.isDraggingBomb()) {
-                        // Update bomb position, account for initial offset
-                        currentGame.setBombCoordinates(event.x - touchOffsetX, event.y - touchOffsetY)
-                        currentGame.redrawListener?.onRedrawRequested()
-                        return true
-                    }
-                }
-                MotionEvent.ACTION_UP -> {
-                    if (currentGame.isDraggingBomb()) {
-                        currentGame.setDraggingBomb(false)
-                        isCurrentlyDragging = false
-                        currentGame.redrawListener?.onRedrawRequested()
-                        return true
-                    }
-                }
+                // We can remove the ACTION_MOVE and ACTION_UP logic related to dragging
+                // as the bomb will no longer be draggable.
             }
         }
         return super.onTouchEvent(event)
