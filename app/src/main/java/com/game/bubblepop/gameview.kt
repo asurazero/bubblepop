@@ -73,6 +73,7 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
         color = Color.BLACK
         style = Paint.Style.FILL
     }
+    val paint = Paint()
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
@@ -85,7 +86,22 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                 currentGame.setBombActive(false)
                 currentGame.setBombStopped(false)
             }
+            // Display the power-up text
+            if (currentGame.getDisplayingPowerUpText()) { // Access via getter
 
+                paint.color = Color.BLACK
+                paint.textSize = 80f
+                paint.textAlign = Paint.Align.CENTER
+
+                val textX = width / 2f
+                val textY = height / 4f
+                canvas.drawText(currentGame.getPowerUpText(), textX, textY, paint) // Access via getter
+
+                if (System.currentTimeMillis() > currentGame.getPowerUpTextEndTime()) { // Access via getter
+                    currentGame.isDisplayingPowerUpText = false // Access via setter
+                    currentGame.redrawListener?.onRedrawRequested()
+                }
+            }
             // Get the bubbles list *once* here
             val bubbles = currentGame.getBubbles()
             for (bubble in bubbles) {
@@ -183,6 +199,7 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     val currentTime = System.currentTimeMillis()
+
                     if (currentTime - lastClickTime > clickDebounceDelay) {
                         val x = event.x
                         val y = event.y

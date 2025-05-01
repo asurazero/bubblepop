@@ -13,8 +13,8 @@ android {
         applicationId = "com.game.bubblepop"
         minSdk = 24
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.5"
+        versionCode = 7
+        versionName = "1.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -42,7 +42,7 @@ dependencies {
     implementation("com.google.android.ump:user-messaging-platform:3.1.0")
     implementation ("com.google.firebase:firebase-analytics:17.4.1")
     implementation(platform("com.google.firebase:firebase-bom:33.13.0"))
-    implementation(libs.play.services.ads.lite)
+    //implementation ("com.google.android.gms:play-services-ads-lite:24.0.0")
     implementation(libs.firebase.common.ktx)
     //implementation("com.google.android.gms:play-services-ads:24.2.0")
     implementation(libs.androidx.core.ktx)
@@ -52,7 +52,7 @@ dependencies {
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.foundation.android)
     implementation(libs.androidx.media3.common.ktx)
-    //implementation(libs.play.services.ads.lite)
+    implementation(libs.play.services.ads.lite)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

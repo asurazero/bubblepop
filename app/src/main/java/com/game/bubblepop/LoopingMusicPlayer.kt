@@ -5,60 +5,42 @@ import android.media.MediaPlayer
 import android.os.Handler
 import android.util.Log
 
-class LoopingMusicPlayer(private val context: Context, private val songResourceId: Int) {
+class LoopingMusicPlayer(context: Context, resourceId: Int) {
     private var mediaPlayer: MediaPlayer? = null
-    private var currentPosition = 0
-    private val handler = Handler()
-    private var playDurationMillis: Long = 2000 // Example: Play for 2 seconds
+    private var isPrepared = false
 
     init {
-        mediaPlayer = MediaPlayer.create(context, songResourceId)
-        mediaPlayer?.isLooping = false // We'll handle the progression manually
-    }
-
-    fun playShortSegment() {
-        mediaPlayer?.let { player ->
-            if (!player.isPlaying) {
-                player.seekTo(currentPosition)
-                player.start()
-
-                // Schedule a pause after the specified duration
-                handler.postDelayed({
-                    pausePlayback()
-                }, playDurationMillis)
-            } else {
-                // If already playing, we might just extend the pause timer
-                handler.removeCallbacksAndMessages(null) // Clear any pending pause
-                handler.postDelayed({
-                    pausePlayback()
-                }, playDurationMillis)
-            }
+        mediaPlayer = MediaPlayer.create(context, resourceId)
+        mediaPlayer?.isLooping = true // Enable looping
+        mediaPlayer?.setOnPreparedListener {
+            isPrepared = true;
+        }
+        mediaPlayer?.setOnErrorListener { mp, what, extra ->
+            Log.e("LoopingMusicPlayer", "Error: what=$what, extra=$extra")
+            release() // Clean up on error.
+            false
         }
     }
 
-    private fun pausePlayback() {
-        mediaPlayer?.let { player ->
-            if (player.isPlaying) {
-                player.pause()
-                currentPosition = player.currentPosition
-                Log.d("MusicPlayer", "Paused at: $currentPosition")
-            }
+    fun startLooping() {
+        if (isPrepared && mediaPlayer != null) {
+            mediaPlayer?.start()
+        } else {
+            Log.w("LoopingMusicPlayer", "startLooping called before prepared, or mediaPlayer is null");
         }
-    }
-
-    fun setSegmentDuration(durationMillis: Long) {
-        playDurationMillis = durationMillis
     }
 
     fun stop() {
-        mediaPlayer?.stop()
-        mediaPlayer?.release()
-        mediaPlayer = null
-        currentPosition = 0
+        if (mediaPlayer != null) {
+            mediaPlayer?.stop()
+        }
     }
 
-    fun reset() {
-        mediaPlayer?.seekTo(0)
-        currentPosition = 0
+    fun release() {
+        if (mediaPlayer != null) {
+            mediaPlayer?.release()
+            mediaPlayer = null
+            isPrepared = false
+        }
     }
 }

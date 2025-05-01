@@ -1,5 +1,8 @@
 package com.game.bubblepop
 
+
+
+import android.media.MediaPlayer
 import android.content.Context
 import android.graphics.Color
 import android.graphics.RectF
@@ -20,11 +23,18 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlin.random.Random
 
+
+
+
 interface GameOverListener {
     fun onGameOver(isNewHighScore: Boolean, score: Int)
 }
+
+
 private val mainThreadHandler = Handler(Looper.getMainLooper())
 var gameOverListener: GameOverListener? = null
+
+
 class Game(private val screenWidth: Float, private val screenHeight: Float, private val context: Context) {
     // Public getter for gameActive
 
@@ -63,7 +73,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
     private var bubbleSpawnInterval = 3000L // 3 seconds
     private var baseBubbleGrowthRate = 0.00001f
     private var bubbleGrowthRateIncreasePerLevel = 0.001f
-    private val bubbles = mutableListOf<Bubble>()
+    private var bubbles = mutableListOf<Bubble>()
     private var bubbleIdCounter = 0
     private var nextBubbleId: Int = 0
     private val initialBubbleRadius: Float = 100f
@@ -134,31 +144,38 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
     private var bombShrinking = false
     private val bombShrinkSpeed = 2f
     init {
-        // ... (SoundPool initialization and sound loading) ...
-        spawnInitialBubbles()
-        loadInterstitialAd()
-        startGameLoop() // Start the game loop on the executor
+        Log.d("MusicSetup", "Initializing audio...")
         // Initialize SoundPool
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_GAME)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
             .build()
         soundPool = SoundPool.Builder()
-            .setMaxStreams(2) // Adjust as needed
+            .setMaxStreams(3)
             .setAudioAttributes(audioAttributes)
             .build()
+        Log.d("MusicSetup", "SoundPool initialized")
 
-        // Load sound effects
-        popSoundId = soundPool.load(context, R.raw.pop, 1) // Assuming 'pop_sound' is in res/raw
-        coinRingSoundId = soundPool.load(context, R.raw.pop, 1) // Assuming 'coin_ring' is in res/raw
+        // Load sound effects.
+        popSoundId = soundPool.load(context, R.raw.pop, 1)
+        Log.d("MusicSetup", "popSoundId loaded: $popSoundId")
+        coinRingSoundId = soundPool.load(context, R.raw.ding, 1)
+        Log.d("MusicSetup", "coinRingSoundId loaded: $coinRingSoundId")
 
-        val gameMusicResourceId = R.raw.tgs // Replace with your music file
+        // Load and start music
+        val gameMusicResourceId = R.raw.tgs
+        Log.d("MusicSetup", "Loading music resource: $gameMusicResourceId")
         musicPlayer = LoopingMusicPlayer(context, gameMusicResourceId)
-        musicPlayer.setSegmentDuration(1000) // Adjust the duration as needed
+        Log.d("MusicSetup", "LoopingMusicPlayer created")
+        musicPlayer.startLooping()
 
         spawnInitialBubbles()
         loadInterstitialAd()
+        startGameLoop()
     }
+
+
+
 
 
     interface AdDismissedListener {
@@ -206,26 +223,36 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             }
         })
     }
-
     private fun showInterstitialAd() {
         Log.d("AdFlow", "showInterstitialAd() called. Ad instance: $interstitialAd")
         if (interstitialAd != null) {
             Log.d("AdFlow", "Interstitial ad is not null, attempting to show.")
             if (context is GamePlay) {
                 mainThreadHandler.post { // Wrap the show call in this block
-                    interstitialAd?.show(context as GamePlay)
+                    try {
+                        Log.d("AdFlow", "About to show interstitial ad. Context: ${context::class.java.name}") // Log context
+                        interstitialAd?.show(context as GamePlay)
+                        Log.d("AdFlow", "Interstitial ad shown successfully.") // Log success
+                    } catch (e: Exception) {
+                        Log.e("AdFlow", "Error showing interstitial ad: ${e.message}, Context: ${context::class.java.name}, Thread: ${Thread.currentThread().name}") // Log the exception and context and thread
+                        gameActive = true
+                        addRandomBubble()
+                    } finally {
+                        Log.d("AdFlow", "Finally block executed after ad show attempt. Thread: ${Thread.currentThread().name}")
+                    }
                 }
             } else {
-                Log.e("AdFlow", "Invalid context to show ad.")
+                Log.e("AdFlow", "Invalid context to show ad. context = ${context::class.java.name}") // Log context
                 gameActive = true
                 addRandomBubble()
             }
         } else {
-            Log.d("AdFlow", "Interstitial ad is null, cannot show.")
+            Log.e("AdFlow", "Interstitial ad is null, cannot show.")
             gameActive = true
             addRandomBubble()
         }
     }
+
 
     // ... rest of your Game class ...
 
@@ -294,7 +321,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
 
     fun update() {
         if (!gameActive) return
-
+        musicPlayer.startLooping()
         val currentTime = System.currentTimeMillis()
 
         // Activate the rectangle after the delay
@@ -326,54 +353,63 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
         // Handle bubble updates and collision with the rectangle
         val rectangleRect = RectF(rectangleX, rectangleY, rectangleX + rectangleWidth, rectangleY + rectangleHeight)
 
-        for (bubble in bubbles) { // First loop
-            val bubbleRect = RectF(bubble.x - bubble.radius, bubble.y - bubble.radius, bubble.x + bubble.radius, bubble.y + bubble.radius)
+        // Iterate over a copy to avoid ConcurrentModificationException
+        for (bubble in bubbles.toList()) {
+            try {
+                val bubbleRect = RectF(bubble.x - bubble.radius, bubble.y - bubble.radius, bubble.x + bubble.radius, bubble.y + bubble.radius)
 
-            if (isRectangleActive && RectF.intersects(bubbleRect, rectangleRect)) {
-                bubblesToRemove.add(bubble) // Add to removal list
-                if (bubble.bubbleType == BubbleType.NORMAL) {
-                    missedBubbles++
-                    Log.d("Game", "Normal bubble hit! Missed bubbles increased. Current missed: $missedBubbles")
-                    missedBubbleChangeListener?.onMissedBubbleCountChanged(missedBubbles)
+                if (isRectangleActive && RectF.intersects(bubbleRect, rectangleRect)) {
+                    bubblesToRemove.add(bubble) // Add to removal list
+                    if (bubble.bubbleType == BubbleType.NORMAL) {
+                        missedBubbles++
+                        Log.d("Game", "Normal bubble hit! Missed bubbles increased. Current missed: $missedBubbles")
+                        missedBubbleChangeListener?.onMissedBubbleCountChanged(missedBubbles)
+                    }
+                    continue // Important: Continue to the next bubble
                 }
-                continue // Important: Continue to the next bubble
-            }
-            // Regular bubble movement and shrinking
-            if (bubble.bubbleType == BubbleType.NORMAL || bubble.bubbleType == BubbleType.POWER_UP) {
-                if (bubble.y > screenHeight / 2) {
-                    bubble.radius -= currentBubbleGrowthRate * (currentTime - (bubble.creationTime + (currentTime - lastUpdateTime))) * shrinkingSpeedMultiplier
-                    if (bubble.radius <= 0) {
+                // Regular bubble movement and shrinking
+                if (bubble.bubbleType == BubbleType.NORMAL || bubble.bubbleType == BubbleType.POWER_UP) {
+                    if (bubble.y > screenHeight / 2) {
+                        bubble.radius -= currentBubbleGrowthRate * (currentTime - (bubble.creationTime + (currentTime - lastUpdateTime))) * shrinkingSpeedMultiplier
+                        if (bubble.radius <= 0) {
+                            bubblesToRemove.add(bubble)
+                            continue
+                        }
+                    } else {
+                        bubble.radius += currentBubbleGrowthRate * (currentTime - (bubble.creationTime + (currentTime - lastUpdateTime)))
+                        if (bubble.radius > maxBubbleRadius) {
+                            bubble.radius = maxBubbleRadius
+                        }
+                    }
+
+                    if (level > 50) {
+                        bubble.isRed = true
+                        bubble.popLifespanMultiplier = 0.7f
+                        increaseDifficulty()
+                    }
+
+                    if (bubble.shouldPop()) {
                         bubblesToRemove.add(bubble)
-                        continue
                     }
-                } else {
-                    bubble.radius += currentBubbleGrowthRate * (currentTime - (bubble.creationTime + (currentTime - lastUpdateTime)))
-                    if (bubble.radius > maxBubbleRadius) {
-                        bubble.radius = maxBubbleRadius
+
+                    if (bubble.y < screenHeight) {
+                        bubble.y += negativeBubbleSpeed;
+                    }
+                    if (bubble.y >= screenHeight) {
+                        bubblesToRemove.add(bubble)
+                    }
+                } else if (bubble.bubbleType == BubbleType.NEGATIVE) {
+                    bubble.y += negativeBubbleSpeed
+                    if (bubble.y > screenHeight + bubble.radius) {
+                        bubblesToRemove.add(bubble)
                     }
                 }
-
-                if (level > 50) {
-                    bubble.isRed = true
-                    bubble.popLifespanMultiplier = 0.7f
-                    increaseDifficulty()
-                }
-
-                if (bubble.shouldPop()) {
-                    bubblesToRemove.add(bubble)
-                }
-
-                if (bubble.y < screenHeight) {
-                    bubble.y += negativeBubbleSpeed;
-                }
-                if (bubble.y >= screenHeight) {
-                    bubblesToRemove.add(bubble)
-                }
-            } else if (bubble.bubbleType == BubbleType.NEGATIVE) {
-                bubble.y += negativeBubbleSpeed
-                if (bubble.y > screenHeight + bubble.radius) {
-                    bubblesToRemove.add(bubble)
-                }
+            } catch (e: Exception) {
+                Log.e("Game", "Error processing bubble ${bubble.id}: ${e.message}")
+                // Optionally handle the error, e.g., remove the problematic bubble
+                // val remainingBubbles = bubbles.toMutableList()
+                // remainingBubbles.remove(bubble)
+                // bubbles = remainingBubbles
             }
         }
 
@@ -381,40 +417,43 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             val bombEffectedBubbles = mutableListOf<Bubble>()
             if (currentTime <= bombEndTime) {
                 val bombRect = RectF(bombX - bombRadius, bombY - bombRadius, bombX + bombRadius, bombY + bombRadius)
-                for (bubble in bubbles) {
-                    if (RectF.intersects(
-                            RectF(bubble.x - bubble.radius, bubble.y - bubble.radius, bubble.x + bubble.radius, bubble.y + bubble.radius),
-                            bombRect
-                        )
-                    ) {
-                        bombEffectedBubbles.add(bubble)
-                        when (bubble.bubbleType) {
-                            BubbleType.NORMAL -> {
-                                score += level
-                                musicPlayer.playShortSegment()
-                                soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
-                            }
-                            BubbleType.POWER_UP -> {
-                                bubble.powerUpType?.let {
-                                    Log.d("Game", "Bomb collided with power-up $it at (${bubble.x}, ${bubble.y})")
-                                    applyPowerUpEffect(it, bubble.x, bubble.y) // Apply the power-up effect
+                // Iterate over a copy for bomb collision detection
+                for (bubble in bubbles.toList()) {
+                    try {
+                        val bubbleRect = RectF(bubble.x - bubble.radius, bubble.y - bubble.radius, bubble.x + bubble.radius, bubble.y + bubble.radius)
+                        if (RectF.intersects(bubbleRect, bombRect)) {
+                            bombEffectedBubbles.add(bubble)
+                            when (bubble.bubbleType) {
+                                BubbleType.NORMAL -> {
+                                    score += level
+                                    //removed play short seg()
+                                    soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
                                 }
-                            }
-                            BubbleType.NEGATIVE -> {
-                                if (missedBubbles > 0) {
-                                    missedBubbles--
-                                    missedBubbleChangeListener?.onMissedBubbleCountChanged(missedBubbles)
-                                    Log.d(
-                                        "Game",
-                                        "Negative bubble hit bomb! Missed count reduced to $missedBubbles"
-                                    )
-                                    soundPool.play(coinRingSoundId, 1f, 1f, 0, 0, 1f) // Play coin ring sound
-                                    rectangleY += negativeBubbleDescentAmount // Move the rectangle down
-                                } else {
-                                    Log.d("Game", "Negative bubble hit bomb! Missed count already at 0.")
+                                BubbleType.POWER_UP -> {
+                                    bubble.powerUpType?.let {
+                                        Log.d("Game", "Bomb collided with power-up $it at (${bubble.x}, ${bubble.y})")
+                                        applyPowerUpEffect(it, bubble.x, bubble.y) // Apply the power-up effect
+                                    }
+                                }
+                                BubbleType.NEGATIVE -> {
+                                    if (missedBubbles > 0) {
+                                        missedBubbles--
+                                        missedBubbleChangeListener?.onMissedBubbleCountChanged(missedBubbles)
+                                        Log.d(
+                                            "Game",
+                                            "Negative bubble hit bomb! Missed count reduced to $missedBubbles"
+                                        )
+                                        soundPool.play(coinRingSoundId, 1f, 1f, 0, 0, 1f) // Play coin ring sound
+                                        rectangleY += negativeBubbleDescentAmount // Move the rectangle down
+                                    } else {
+                                        Log.d("Game", "Negative bubble hit bomb! Missed count already at 0.")
+                                    }
                                 }
                             }
                         }
+                    } catch (e: Exception) {
+                        Log.e("Game", "Error checking bomb collision with bubble ${bubble.id}: ${e.message}")
+                        // Optionally handle the error
                     }
                 }
                 bubblesToRemove.addAll(bombEffectedBubbles)
@@ -427,10 +466,17 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
         if (isSlowTimeActive && currentTime >= slowTimeEndTime) {
             isSlowTimeActive = false
             powerUpSpawnProbability = defaultPowerUpProbability
-
         }
+
         // Remove all collected bubbles after processing
-        bubbles.removeAll(bubblesToRemove)
+        try {
+            bubbles.removeAll(bubblesToRemove)
+        } catch (e: Exception) {
+            Log.e("Game", "Error removing bubbles: ${e.message}")
+            val remainingBubbles = bubbles.toMutableList()
+            remainingBubbles.removeAll(bubblesToRemove)
+            bubbles = remainingBubbles
+        }
 
         if (bubbles.isEmpty() && gameActive) {
             levelUp()
@@ -445,7 +491,6 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             soundPool.release()
         }
     }
-
 
 
 
@@ -466,7 +511,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 Log.d("Game", "Clicked -1 bubble! Missed count already at 0.")
             }
             bubbles.remove(it)
-            musicPlayer.playShortSegment()
+            //removed play short seg()
             redrawListener?.onRedrawRequested()
             return // Exit the function after handling the negative bubble
         }
@@ -481,7 +526,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 println("Power-up bubble clicked! Type: $type")  // Corrected log
                 applyPowerUpEffect(type, it.x, it.y)
                 bubbles.remove(it)
-                musicPlayer.playShortSegment()
+                //removed play short seg()
                 soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
                 redrawListener?.onRedrawRequested()
 
@@ -496,7 +541,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             bubbles.removeAll(clickedNormalBubbles)
             if (removedCount > 0) {
                 score += removedCount * level
-                musicPlayer.playShortSegment()
+                //removed play short seg()
                 soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
                 if (bubbles.isEmpty()) {
                     levelUp()
@@ -528,7 +573,26 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
     private val slowTimeDuration = 8000L // Example duration: 8 seconds
     private val increasedPowerUpProbability = 0.15f // Example: 50% chance during slow time
     private val defaultPowerUpProbability = 0.05f
+    private var powerUpText: String = ""  // To store the text to display
+    var isDisplayingPowerUpText: Boolean = false // Flag to control text display
+    private var powerUpTextEndTime: Long = 0 // Time when the text should disappear
+    fun showPowerUpText(text: String) {
+        powerUpText = text
+        isDisplayingPowerUpText = true
+        powerUpTextEndTime = System.currentTimeMillis() + 2000
+        redrawListener?.onRedrawRequested()
+    }
 
+    fun getDisplayingPowerUpText(): Boolean{
+        return isDisplayingPowerUpText
+    }
+
+    fun getPowerUpText(): String{
+        return powerUpText
+    }
+    fun getPowerUpTextEndTime(): Long{
+        return powerUpTextEndTime
+    }
 
     private fun applyPowerUpEffect(type: PowerUpType, powerUpX: Float, powerUpY: Float) {
         when (type) {
@@ -539,12 +603,14 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 bombEndTime = System.currentTimeMillis() + bombDuration
                 isBombActive = true
                 Log.d("Game", "Bomb activated! x=$bombX, y=$bombY, endTime=$bombEndTime, radius=$bombRadius")
+                showPowerUpText("Black Hole") // Show "Bomb" text
                 redrawListener?.onRedrawRequested()
             }
             PowerUpType.SLOW_TIME -> {
                 isSlowTimeActive = true
                 slowTimeEndTime = System.currentTimeMillis() + slowTimeDuration
                 powerUpSpawnProbability = increasedPowerUpProbability
+                showPowerUpText("2x Power Ups") // Show "Slow Time" text
 
             }
             PowerUpType.EXTRA_LIFE -> {
@@ -553,6 +619,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 greenRectangleEndTime = System.currentTimeMillis() + greenRectangleDuration
                 rectangleRiseSpeed = greenRectangleDescentSpeed
                 Log.d("Game", "Extra Life activated!  endTime: $greenRectangleEndTime")
+                showPowerUpText("Reverse Rectangle") // Show "Extra Life" text
                 redrawListener?.onRedrawRequested()
             }
             PowerUpType.GROWTH_STOPPER -> {
@@ -565,6 +632,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                     cyanRectangleEndTime = System.currentTimeMillis() + 5000
                     rectangleRiseSpeed = 0f // Stop movement.
                     Log.d("Game", "Growth Stopper activated! endTime: $greenRectangleEndTime")
+                    showPowerUpText("Freeze Rectangle") // Show "Growth Stopper"
                     redrawListener?.onRedrawRequested()
                 }
             }
@@ -574,10 +642,15 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 isCyanRectangleActive = false
                 greenRectangleEndTime = System.currentTimeMillis() + greenRectangleDuration
                 Log.d("Game", "Green Rectangle activated!  endTime: $greenRectangleEndTime")
+                // Show "Green Rectangle" text
                 redrawListener?.onRedrawRequested()
             }
         }
     }
+
+
+
+
 
     fun getMissedBubbles(): Int {
         return missedBubbles
@@ -741,12 +814,19 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             Log.d("Game", "Number of bubbles: ${bubbles.size}")
             val bubblesToPop = mutableListOf<Bubble>()
 
-            for (bubble in bubbles) {
-                val distance = sqrt((bubble.x - bombX).pow(2) + (bubble.y - bombY).pow(2))
-                Log.d("Game", "Checking bubble ${bubble.id} at (${bubble.x}, ${bubble.y}) with radius ${bubble.radius}, distance to bomb: $distance")
-                if (distance < bombRadius + bubble.radius) {
-                    bubblesToPop.add(bubble)
-                    Log.d("Game", "Bomb colliding with bubble ${bubble.id}")
+            // Iterate through a copy of the bubbles list to avoid ConcurrentModificationException
+            for (bubble in bubbles.toList()) {
+                try {
+                    val distance = sqrt((bubble.x - bombX).pow(2) + (bubble.y - bombY).pow(2))
+                    Log.d("Game", "Checking bubble ${bubble.id} at (${bubble.x}, ${bubble.y}) with radius ${bubble.radius}, distance to bomb: $distance")
+                    if (distance < bombRadius + bubble.radius) {
+                        bubblesToPop.add(bubble)
+                        Log.d("Game", "Bomb colliding with bubble ${bubble.id}")
+                    }
+                } catch (e: Exception) {
+                    Log.e("Game", "Error while checking bubble ${bubble.id}: ${e.message}")
+                    // Optionally handle the error, e.g., remove the problematic bubble
+                    // bubbles.remove(bubble)
                 }
             }
 
@@ -754,32 +834,56 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             if (normalBubblesToRemove.isNotEmpty()) {
                 val removedCount = normalBubblesToRemove.size
                 Log.d("Game", "Popping $removedCount normal bubbles.")
-                bubbles.removeAll(normalBubblesToRemove) // Still directly removing here, need to change
-                if (removedCount > 0) {
-                    score += removedCount * level
-                    musicPlayer.playShortSegment()
-                    soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
-                    if (bubbles.isEmpty()) {
-                        levelUp()
+                try {
+                    bubbles.removeAll(normalBubblesToRemove)
+                    if (removedCount > 0) {
+                        score += removedCount * level
+                        //removed play short seg()
+                        soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
+                        if (bubbles.isEmpty()) {
+                            levelUp()
+                        }
+                    } else {
+                        Log.d("Game", "No normal bubbles to pop.")
                     }
-                } else {
-                    Log.d("Game", "No normal bubbles to pop.")
+                } catch (e: Exception) {
+                    Log.e("Game", "Error removing normal bubbles: ${e.message}")
+                    // Handle the error, perhaps by creating a new list and assigning it to bubbles
+                    val remainingBubbles = bubbles.toMutableList()
+                    remainingBubbles.removeAll(normalBubblesToRemove)
+                    bubbles = remainingBubbles
                 }
             }
 
-            val powerUpsToRemove = mutableListOf<Bubble>()
-            bubblesToPop.filter { it.bubbleType == BubbleType.POWER_UP }.forEach {
-                it.powerUpType?.let { type ->
-                    Log.d("Game", "Bomb triggered power-up: $type at x=${it.x}, y=${it.y}")
-                    applyPowerUpEffect(type, it.x, it.y)
+            val powerUpsToRemove = bubblesToPop.filter { it.bubbleType == BubbleType.POWER_UP }
+            for (powerUp in powerUpsToRemove) {
+                try {
+                    powerUp.powerUpType?.let { type ->
+                        Log.d("Game", "Bomb triggered power-up: $type at x=${powerUp.x}, y=${powerUp.y}")
+                        applyPowerUpEffect(type, powerUp.x, powerUp.y)
+                    }
+                } catch (e: Exception) {
+                    Log.e("Game", "Error applying power-up effect for bubble ${powerUp.id}: ${e.message}")
                 }
-                powerUpsToRemove.add(it) // Add power-up to removal list
             }
-            bubbles.removeAll(powerUpsToRemove) // Remove power-ups after applying effect
+            try {
+                bubbles.removeAll(powerUpsToRemove) // Remove power-ups after applying effect
+            } catch (e: Exception) {
+                Log.e("Game", "Error removing power-up bubbles: ${e.message}")
+                val remainingBubbles = bubbles.toMutableList()
+                remainingBubbles.removeAll(powerUpsToRemove)
+                bubbles = remainingBubbles
+            }
 
-            // We don't want the bomb to trigger negative bubble effects
             val negativeBubblesToRemove = bubblesToPop.filter { it.bubbleType == BubbleType.NEGATIVE }
-            bubbles.removeAll(negativeBubblesToRemove)
+            try {
+                bubbles.removeAll(negativeBubblesToRemove)
+            } catch (e: Exception) {
+                Log.e("Game", "Error removing negative bubbles: ${e.message}")
+                val remainingBubbles = bubbles.toMutableList()
+                remainingBubbles.removeAll(negativeBubblesToRemove)
+                bubbles = remainingBubbles
+            }
 
             // Reset bomb state after attempting to pop
             isBombActive = false
