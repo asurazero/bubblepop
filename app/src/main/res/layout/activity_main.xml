@@ -8,8 +8,50 @@
     tools:context=".MainActivity">
 
     <androidx.constraintlayout.widget.ConstraintLayout
-        android:layout_width="0dp"
-        android:layout_height="0dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="45dp"
+        android:layout_marginTop="482dp"
+        android:layout_marginEnd="216dp"
+        android:layout_marginBottom="99dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageView
+            android:id="@+id/scoresbutton"
+            android:layout_width="150dp"
+            android:layout_height="150dp"
+            android:clickable="true"
+            android:focusable="true"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.5"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_bias="0.5"
+            app:srcCompat="@drawable/bubble" />
+
+        <TextView
+            android:id="@+id/textView2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Score"
+            android:textColor="@color/black"
+            android:textSize="24sp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.5"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_bias="0.5" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="212dp"
+        android:layout_height="223dp"
         android:layout_marginStart="100dp"
         android:layout_marginTop="100dp"
         android:layout_marginEnd="100dp"
@@ -21,10 +63,10 @@
 
         <ImageView
             android:id="@+id/startbutton"
+            android:layout_width="211dp"
+            android:layout_height="216dp"
             android:clickable="true"
             android:focusable="true"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.5"
@@ -46,6 +88,53 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintVertical_bias="0.5" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="visible"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.5"
+        tools:visibility="visible">
+
+        <ImageView
+            android:id="@+id/scoredisplay"
+            android:layout_width="400dp"
+            android:layout_height="400dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.5"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_bias="0.5"
+            app:srcCompat="@drawable/bubble"
+            tools:visibility="gone" />
+
+        <TextView
+            android:id="@+id/textViewscoredisp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="High Score"
+            android:textAlignment="center"
+            android:textColor="@color/black"
+            android:textSize="48sp"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.5"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_bias="0.5"
+            tools:visibility="gone" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

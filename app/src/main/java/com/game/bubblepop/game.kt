@@ -26,14 +26,6 @@ import kotlin.random.Random
 
 
 
-interface GameOverListener {
-    fun onGameOver(isNewHighScore: Boolean, score: Int)
-}
-
-
-private val mainThreadHandler = Handler(Looper.getMainLooper())
-var gameOverListener: GameOverListener? = null
-
 
 class Game(private val screenWidth: Float, private val screenHeight: Float, private val context: Context) {
     // Public getter for gameActive
@@ -47,6 +39,9 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
         gameActive = isActive
     }
 
+    interface GameOverListener {
+        fun onGameOver(isNewHighScore: Boolean, score: Int)
+    }
 
     interface MissedBubbleChangeListener {
         fun onMissedBubbleCountChanged(newCount: Int)
@@ -58,7 +53,8 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
 
     var redrawListener: RedrawListener? = null
     var missedBubbleChangeListener: MissedBubbleChangeListener? = null
-
+    private val mainThreadHandler = Handler(Looper.getMainLooper())
+    var gameOverListener: GameOverListener? = null // The listener instance
     private fun decrementMissedBubbles() {
         if (missedBubbles > 0) {
             missedBubbles--
@@ -336,6 +332,18 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
 
         val bubblesToRemove = mutableListOf<Bubble>() // List to hold bubbles to be removed
 
+        if (missedBubbles >= missedBubbleThreshold && gameActive) {
+            gameActive = false
+            println("Game Over! Too many missed bubbles!")
+            musicPlayer.stop()
+            println("stop the music")
+            soundPool.release()
+            println("chill the sound")
+
+            // Notify the game over listener
+            Log.d("Game", "Game Over condition met. Calling gameOverListener.")
+            handleGameOver()
+        }
         // Handle green rectangle behavior
         if (isGreenRectangleActive) {
             if (currentTime < greenRectangleEndTime) {
@@ -343,7 +351,9 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             } else {
                 isGreenRectangleActive = false
                 rectangleColor = Color.RED // Reset to default color.
-                rectangleRiseSpeed = 0.1f
+                //TODO add metered rectangle speed as it gets higher it gets slower
+                //TODO revert this back after game over tests
+                rectangleRiseSpeed = 0.1f //set normal at 0.1f //4.0 or 2.5 for game over tests
                 redrawListener?.onRedrawRequested()
             }
         } else if (isRectangleActive) {
@@ -354,6 +364,8 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
         val rectangleRect = RectF(rectangleX, rectangleY, rectangleX + rectangleWidth, rectangleY + rectangleHeight)
 
         // Iterate over a copy to avoid ConcurrentModificationException
+        //TODO fix power up bubbles getting points when hitting rectangle
+
         for (bubble in bubbles.toList()) {
             try {
                 val bubbleRect = RectF(bubble.x - bubble.radius, bubble.y - bubble.radius, bubble.x + bubble.radius, bubble.y + bubble.radius)
@@ -484,12 +496,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
         redrawListener?.onRedrawRequested()
         lastUpdateTime = currentTime
 
-        if (missedBubbles >= missedBubbleThreshold) {
-            gameActive = false
-            println("Game Over! Too many missed bubbles!")
-            musicPlayer.stop()
-            soundPool.release()
-        }
+
     }
 
 
@@ -797,13 +804,16 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
 
     private fun getHighScore(): Int {
         val sharedPref = context.getSharedPreferences("game_prefs", Context.MODE_PRIVATE) ?: return 0
-        return sharedPref.getInt("high_score", 0)
+        val highScore = sharedPref.getInt("high_score", 0)
+        Log.d("Game", "Retrieved high score: $highScore")
+        return highScore
     }
 
     private fun handleGameOver() {
         val highScore = getHighScore()
+        Log.d("Game", "Current score: $score, High score: $highScore")
         val isNewHighScore = score > highScore
-
+        Log.d("Game", "Is new high score: $isNewHighScore")
         saveHighScore(score)
         gameOverListener?.onGameOver(isNewHighScore, score)
         gameActive = false

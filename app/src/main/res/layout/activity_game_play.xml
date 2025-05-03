@@ -46,7 +46,20 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             tools:visibility="gone" />
-
+        <TextView
+            android:id="@+id/gameOverTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Game Over!\nScore: 0"
+            android:background="#80000000"
+            android:textSize="32sp"
+            android:textColor="@android:color/white"
+            android:visibility="gone"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:gravity="center"/>
     </androidx.constraintlayout.widget.ConstraintLayout>
 
 
