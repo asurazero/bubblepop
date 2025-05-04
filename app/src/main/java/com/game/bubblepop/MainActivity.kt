@@ -23,6 +23,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         val scoresButton=findViewById<ImageView>(R.id.scoresbutton)
         val scoreDisplay=findViewById<ImageView>(R.id.scoredisplay)
+        val settingsButton=findViewById<ImageView>(R.id.settingsbutton)
         val scoreDisplayText=findViewById<TextView>(R.id.textViewscoredisp)
         val startButton=findViewById<ImageView>(R.id.startbutton)
         val  intent= Intent(this,GamePlay::class.java)
@@ -56,6 +57,12 @@ class MainActivity : AppCompatActivity() {
                 soundPool.release()
             }
         }
+        settingsButton.setOnClickListener {
+            soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
+            val intent = Intent(this, Settings::class.java)
+            startActivity(intent)
+            soundPool.release()
+        }
 
         MobileAds.initialize(this) {}
         FirebaseApp.initializeApp(this)
@@ -66,6 +73,7 @@ class MainActivity : AppCompatActivity() {
             insets
         }
     }
+
     private fun getHighScore(): Int {
         print("getting score")
         val sharedPref = getSharedPreferences("game_prefs", Context.MODE_PRIVATE) ?: return 0
