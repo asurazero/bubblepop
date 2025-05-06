@@ -10,13 +10,17 @@ import androidx.appcompat.app.AppCompatActivity
 import com.game.bubblepop.Game
 
 class GamePlay : AppCompatActivity(), Game.AdDismissedListener, Game.MissedBubbleChangeListener, Game.GameOverListener {
-
+    var isSplitModeActive = false
     private lateinit var gameView: GameView
     private lateinit var game: Game
     private lateinit var continueMessageTextView: TextView
     private lateinit var gameOverTextView: TextView // Add TextView for game over message
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        if (MainActivity.GameModeStates.isSplitModeActive == true) {
+            isSplitModeActive = true
+        } else isSplitModeActive = false
+
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_game_play)
@@ -38,18 +42,19 @@ class GamePlay : AppCompatActivity(), Game.AdDismissedListener, Game.MissedBubbl
         gameView.setOnTouchListener { _, event ->
             if (!game.isGameActive() && continueMessageTextView.visibility == View.VISIBLE && event.action == MotionEvent.ACTION_DOWN) {
                 continueMessageTextView.visibility = View.GONE
+                game.startMusic()
                 game.setGameActive(true)
                 true
             } else if (!game.isGameActive() && gameOverTextView.visibility == View.VISIBLE && event.action == MotionEvent.ACTION_DOWN) {
                 // Handle restart game logic here if needed
-                // For now, let's just log
+                // For now, let's just go back to MainActivity
                 println("Game Over screen touched.")
-                var intent= Intent(this, MainActivity::class.java)
+                val intent = Intent(this, MainActivity::class.java)
                 startActivity(intent)
-
+                finish() // Finish the GamePlay activity
                 true
             } else if (event.action == MotionEvent.ACTION_DOWN && game.isGameActive()) {
-                game.processClick(event.x, event.y)
+                game.processClick(event.x, event.y, isSplitModeActive)
                 gameView.invalidate()
                 true
             } else {
@@ -61,7 +66,10 @@ class GamePlay : AppCompatActivity(), Game.AdDismissedListener, Game.MissedBubbl
     override fun onAdDismissed() {
         continueMessageTextView.visibility = View.VISIBLE
         game.setGameActive(false)
+        // Removed game.startMusic() from here
     }
+
+    //TODO fix sound breaking bug after ads
 
     override fun onMissedBubbleCountChanged(newCount: Int) {
         gameView.invalidate()
@@ -84,18 +92,24 @@ class GamePlay : AppCompatActivity(), Game.AdDismissedListener, Game.MissedBubbl
 
     override fun onResume() {
         super.onResume()
-        // No need to call gameView.resume() here unless you have specific logic in GameView
+        game.startMusic() // Start music when the activity resumes
     }
 
     override fun onPause() {
         super.onPause()
-        // No need to call gameView.pause() here unless you have specific logic in GameView
+        game.stopMusic() // Stop music when the activity is paused
     }
 
     override fun onDestroy() {
         super.onDestroy()
         // It's good practice to release resources in onDestroy
         game.setGameActive(false) // Ensure game loop stops
+        game.releaseSoundPool() // Release sound pool resources
         // Consider releasing other resources held by the Game class if necessary
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // No need to explicitly stop music here as onPause() will be called before onStop()
     }
 }

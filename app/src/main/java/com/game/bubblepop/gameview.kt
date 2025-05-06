@@ -1,6 +1,5 @@
 package com.game.bubblepop
 
-// GameView.kt
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -12,6 +11,11 @@ import android.graphics.RectF
 import androidx.media3.common.util.Log
 
 class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), Game.RedrawListener {
+    //Other Game modes
+    var isSplitModeActive = false
+
+
+    //Other Game modes
     private var gameContext: Context? = null
     lateinit var game: Game // Declare Game as lateinit var
     private var lastClickTime = 0L
@@ -26,6 +30,10 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
     }
 
     override fun onAttachedToWindow() {
+        if(MainActivity.GameModeStates.isSplitModeActive==true){
+            isSplitModeActive=true
+        }else isSplitModeActive=false
+
         super.onAttachedToWindow()
         game.redrawListener = this
     }
@@ -42,6 +50,11 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
     private val normalPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.BLUE
         style = Paint.Style.FILL
+    }
+    private val normalStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { // Added for the outline
+        color = Color.BLACK
+        style = Paint.Style.STROKE
+        strokeWidth = 12f // Adjust as needed
     }
 
     private val negativePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -116,6 +129,9 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                     //check for the max radius
                     val drawRadius = Math.min(bubble.radius, 200f)
                     canvas.drawCircle(bubble.x, bubble.y, drawRadius, paintToUse)
+                    if (bubble.bubbleType == BubbleType.NORMAL) { // Draw outline for normal bubbles
+                        canvas.drawCircle(bubble.x, bubble.y, drawRadius, normalStrokePaint)
+                    }
 
                     bubble.powerUpType?.let { powerUp ->
                         val powerUpPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -150,7 +166,7 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                         val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                             style = Paint.Style.STROKE
                             color = Color.DKGRAY
-                            strokeWidth = drawRadius * 0.05f
+                            strokeWidth = drawRadius * 0.1f
                         }
                         canvas.drawCircle(bubble.x, bubble.y, innerCircleRadius, innerPaint)
                     }
@@ -213,7 +229,7 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                             return true // Consume the touch event
                         } else {
                             // Handle regular clicks (e.g., shooting bubbles)
-                            currentGame.processClick(x, y)
+                            currentGame.processClick(x, y, isSplitModeActive) // Pass the split mode state
                             lastClickTime = currentTime
                         }
                         return true

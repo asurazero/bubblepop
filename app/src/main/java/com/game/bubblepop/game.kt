@@ -11,6 +11,7 @@ import android.media.SoundPool
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
@@ -29,7 +30,6 @@ import kotlin.random.Random
 
 class Game(private val screenWidth: Float, private val screenHeight: Float, private val context: Context) {
     // Public getter for gameActive
-
     fun isGameActive(): Boolean {
         return gameActive
     }
@@ -109,7 +109,8 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
     private var currentBubbleLifespan: Long = initialBubbleLifespan
     // Integrate LoopingMusicPlayer
     private val musicPlayer: LoopingMusicPlayer
-    private val soundPool: SoundPool
+    private var soundPool: SoundPool
+
     private val popSoundId: Int
     private val coinRingSoundId: Int
     private val executor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
@@ -139,6 +140,9 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
     private var isDraggingBomb = false
     private var bombShrinking = false
     private val bombShrinkSpeed = 2f
+    //Other game modes
+    var isSplitModeActive = false
+
     init {
         Log.d("MusicSetup", "Initializing audio...")
         // Initialize SoundPool
@@ -168,6 +172,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
         spawnInitialBubbles()
         loadInterstitialAd()
         startGameLoop()
+
     }
 
 
@@ -268,6 +273,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
 
         var chosenBubbleType: BubbleType
         val chosenPowerUpType: PowerUpType?
+        var setCanSplit = false // Add this variable
 
         if (Random.nextFloat() < powerUpSpawnProbability) {
             // It's a power-up bubble
@@ -281,6 +287,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             // It's a normal bubble
             chosenBubbleType = BubbleType.NORMAL
             chosenPowerUpType = null
+            setCanSplit = true //normal bubbles can split
         }
         Log.d("Game", "addRandomBubble: bubbleType = $chosenBubbleType, powerUpType = $chosenPowerUpType")
 
@@ -297,11 +304,11 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 lifespan = Random.nextLong(9999, 99999),
                 powerUpType = chosenPowerUpType,
                 bubbleType = chosenBubbleType,
-                isShrinking = isShrinking
+                isShrinking = isShrinking,
+                canSplit = setCanSplit // Use the setCanSplit value here
             )
         )
     }
-
 
 
 
@@ -316,7 +323,12 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
 
 
     fun update() {
-        if (!gameActive) return
+
+        if(MainActivity.GameModeStates.isSplitModeActive==true){
+            isSplitModeActive=true
+        }else isSplitModeActive=false
+
+        if (!gameActive)return
         musicPlayer.startLooping()
         val currentTime = System.currentTimeMillis()
 
@@ -353,7 +365,17 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 rectangleColor = Color.RED // Reset to default color.
                 //TODO add metered rectangle speed as it gets higher it gets slower
                 //TODO revert this back after game over tests
-                rectangleRiseSpeed = 0.1f //set normal at 0.1f //4.0 or 2.5 for game over tests
+                rectangleRiseSpeed = 0.1f
+                if (MainActivity.GameModeStates.gameDifficulty=="Easy"){
+                    rectangleRiseSpeed = 0.0f
+                }
+                if (MainActivity.GameModeStates.gameDifficulty=="Normal"){
+                    rectangleRiseSpeed = 0.1f
+                }
+                if (MainActivity.GameModeStates.gameDifficulty=="Hard"){
+                    rectangleRiseSpeed = 0.5f
+                }
+                 //set normal at 0.1f //4.0 or 2.5 for game over tests
                 redrawListener?.onRedrawRequested()
             }
         } else if (isRectangleActive) {
@@ -416,6 +438,11 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                         bubblesToRemove.add(bubble)
                     }
                 }
+                bubble.update(screenWidth.toInt(), screenHeight.toInt()) // Call the update function for each bubble.
+                if (bubble.y >= screenHeight) {  //check here
+                    bubblesToRemove.add(bubble)
+                }
+
             } catch (e: Exception) {
                 Log.e("Game", "Error processing bubble ${bubble.id}: ${e.message}")
                 // Optionally handle the error, e.g., remove the problematic bubble
@@ -501,66 +528,82 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
 
 
 
-    fun processClick(clickX: Float, clickY: Float) {
+    fun processClick(clickX: Float, clickY: Float, isSplitMode: Boolean) {
         if (!gameActive) return
-        println("bubble clicked")
-        println(bubbles)
+        var bubbleClicked = false
+        println("split mode: $isSplitMode")
         // Check for negative bubble click first
         val negativeBubble = bubbles.find { it.isClicked(clickX, clickY) && it.bubbleType == BubbleType.NEGATIVE }
         negativeBubble?.let {
+            bubbleClicked = true;
             if (missedBubbles > 0) {
                 missedBubbles--
-                missedBubbleChangeListener?.onMissedBubbleCountChanged(missedBubbles)
+                // missedBubbleChangeListener?.onMissedBubbleCountChanged(missedBubbles) // Fixme: removed listener
                 Log.d("Game", "Clicked -1 bubble! Missed count reduced to $missedBubbles")
-                soundPool.play(coinRingSoundId, 1f, 1f, 0, 0, 1f) // Play coin ring sound
+                // soundPool.play(coinRingSoundId, 1f, 1f, 0, 0, 1f) // Play coin ring sound  Fixme: removed soundpool
                 rectangleY += negativeBubbleDescentAmount // Move the rectangle down
             } else {
                 Log.d("Game", "Clicked -1 bubble! Missed count already at 0.")
             }
             bubbles.remove(it)
-            //removed play short seg()
             redrawListener?.onRedrawRequested()
-            return // Exit the function after handling the negative bubble
+            return  // Important:  Only pop one bubble per click
         }
 
         // If no negative bubble was clicked, check for power-up bubble
         val powerUpBubble = bubbles.find { it.isClicked(clickX, clickY) && it.bubbleType == BubbleType.POWER_UP }
         powerUpBubble?.let {
-            println("POWER UP")
+            bubbleClicked = true;
             it.powerUpType?.let { type ->
                 Log.d("Game", "Power-up bubble clicked! Type: $type")
-                println("POWER UP")
-                println("Power-up bubble clicked! Type: $type")  // Corrected log
                 applyPowerUpEffect(type, it.x, it.y)
                 bubbles.remove(it)
-                //removed play short seg()
-                soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
+                // soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
                 redrawListener?.onRedrawRequested()
-
                 return // Exit after handling power-up
             }
         }
 
         // If no negative or power-up bubble was clicked, handle normal bubbles
         val clickedNormalBubbles = bubbles.filter { it.isClicked(clickX, clickY) && it.bubbleType == BubbleType.NORMAL }
+
         if (clickedNormalBubbles.isNotEmpty()) {
+            bubbleClicked = true;
             val removedCount = clickedNormalBubbles.size
             bubbles.removeAll(clickedNormalBubbles)
-            if (removedCount > 0) {
+            if (MainActivity.GameModeStates.gameDifficulty=="Easy"){
                 score += removedCount * level
-                //removed play short seg()
-                soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
-                if (bubbles.isEmpty()) {
-                    levelUp()
-                }
-                redrawListener?.onRedrawRequested()
             }
-        } else if (isDraggingBomb) {
+            if (MainActivity.GameModeStates.gameDifficulty=="Normal"){
+                score += removedCount * level
+            }
+            if (MainActivity.GameModeStates.gameDifficulty=="Hard"||MainActivity.GameModeStates.isSplitModeActive==true){
+                score += removedCount * level*4
+            }
+
+            soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
+            if (isSplitModeActive) { //check if split mode is active.
+                for (poppedBubble in clickedNormalBubbles) {
+                    if (poppedBubble.canSplit) {
+                        val newBubbles = Bubble.createSplitBubbles(poppedBubble)
+                        bubbles.addAll(newBubbles)
+                    }
+                }
+            }
+            if (bubbles.isEmpty()) {
+                levelUp()
+            }
+            redrawListener?.onRedrawRequested()
+        }
+
+        if (!bubbleClicked && isBombActive) {
             // Check if the user clicked near the bomb
-            val distance = Math.sqrt(Math.pow((clickX - bombX).toDouble(), 2.0) + Math.pow((clickY - bombY).toDouble(), 2.0))
+            val distance =
+                sqrt(Math.pow((clickX - bombX).toDouble(), 2.0) + Math.pow((clickY - bombY).toDouble(), 2.0))
             if (distance < bombRadius) {
-                isDraggingBomb = true
-                setBombCoordinates(clickX, clickY) // Initialize bomb coordinates
+                setBombStopped(true) //set the bomb stopped
+                popAdjacentBubbles()
+                setBombActive(false)
                 redrawListener?.onRedrawRequested()
                 return
             }
@@ -938,7 +981,21 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
     fun getBombX(): Float {
         return bombX
     }
+    fun stopMusic() {
+        Log.d("MusicControl", "Stopping music from Game class.")
+        musicPlayer.stop()
+    }
 
+    fun startMusic() {
+        Log.d("MusicControl", "Starting music from Game class.")
+        musicPlayer.startLooping()
+    }
+
+    fun releaseSoundPool() {
+        Log.d("SoundControl", "Releasing SoundPool from Game class.")
+        soundPool?.release()
+
+    }
     fun getBombY(): Float {
         return bombY
     }
@@ -972,5 +1029,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
     fun getMissedBubbleThreshold(): Int {
         return missedBubbleThreshold
     }
+
 }
+
 

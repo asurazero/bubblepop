@@ -12,24 +12,30 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+
 import com.google.android.gms.ads.MobileAds
 import com.google.firebase.FirebaseApp
 
 class MainActivity : AppCompatActivity() {
+    object GameModeStates {
+        var isSplitModeActive = false
+        var gameDifficulty = "Normal"
+    }
+
+    private var soundPool: SoundPool? = null
+    private var popSoundId: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_main)
-        val scoresButton=findViewById<ImageView>(R.id.scoresbutton)
-        val scoreDisplay=findViewById<ImageView>(R.id.scoredisplay)
-        val settingsButton=findViewById<ImageView>(R.id.settingsbutton)
-        val scoreDisplayText=findViewById<TextView>(R.id.textViewscoredisp)
-        val startButton=findViewById<ImageView>(R.id.startbutton)
-        val  intent= Intent(this,GamePlay::class.java)
-        val musicPlayer: LoopingMusicPlayer
-        val soundPool: SoundPool
-        val popSoundId: Int
+        val scoresButton = findViewById<ImageView>(R.id.scoresbutton)
+        val scoreDisplay = findViewById<ImageView>(R.id.scoredisplay)
+        val settingsButton = findViewById<ImageView>(R.id.settingsbutton)
+        val scoreDisplayText = findViewById<TextView>(R.id.textViewscoredisp)
+        val startButton = findViewById<ImageView>(R.id.startbutton)
+        val intent = Intent(this, GamePlay::class.java)
+        // val musicPlayer: LoopingMusicPlayer // Consider initializing and managing lifecycle
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_GAME)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -38,30 +44,27 @@ class MainActivity : AppCompatActivity() {
             .setMaxStreams(2) // Adjust as needed
             .setAudioAttributes(audioAttributes)
             .build()
-        popSoundId = soundPool.load(this, R.raw.pop, 1)
+        popSoundId = soundPool?.load(this, R.raw.pop, 1) ?: 0
         startButton.setOnClickListener {
-            soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
+            soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f)
             this.startActivity(intent)
-            soundPool.release()}
+        }
 
         scoresButton.setOnClickListener {
-            soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
+            soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f)
             displayHighScore()
-            scoreDisplay.visibility= View.VISIBLE
-            scoreDisplayText.visibility=View.VISIBLE
-            soundPool.release()
+            scoreDisplay.visibility = View.VISIBLE
+            scoreDisplayText.visibility = View.VISIBLE
             scoreDisplay.setOnClickListener {
-                soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
-                scoreDisplay.visibility= View.GONE
-                scoreDisplayText.visibility=View.GONE
-                soundPool.release()
+                soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f)
+                scoreDisplay.visibility = View.GONE
+                scoreDisplayText.visibility = View.GONE
             }
         }
         settingsButton.setOnClickListener {
-            soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
+            soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f)
             val intent = Intent(this, Settings::class.java)
             startActivity(intent)
-            soundPool.release()
         }
 
         MobileAds.initialize(this) {}
@@ -80,13 +83,17 @@ class MainActivity : AppCompatActivity() {
         return sharedPref.getInt("high_score", 0)
     }
 
-    private fun displayHighScore() {
+    override fun onResume() {
+        super.onResume()
+        // Consider resuming music here if implemented
+    }
 
-        val scoreDisplayText=findViewById<TextView>(R.id.textViewscoredisp)
+
+
+    private fun displayHighScore() {
+        val scoreDisplayText = findViewById<TextView>(R.id.textViewscoredisp)
         val highScore = getHighScore()
         scoreDisplayText.text = "High Score:\n$highScore"
         println("displaying score")
     }
-
-
 }
