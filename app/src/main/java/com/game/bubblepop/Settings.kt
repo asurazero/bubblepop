@@ -1,5 +1,6 @@
 package com.game.bubblepop
 
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.widget.ImageView
 import android.widget.TextView
@@ -9,44 +10,53 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 class Settings : AppCompatActivity() {
+
+    private lateinit var sharedPreferences: SharedPreferences
+    private val PREFS_NAME = "BubblePopSettings"
+    private val KEY_MUTATOR = "mutator"
+    private val KEY_DIFFICULTY = "difficulty"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        //TODO build out code for settings menu
-        //TODO dont forget to add terms and conditions and privacy policy to settings menu
         setContentView(R.layout.activity_settings)
-        var mutatorList = mutableListOf<String>("No Mutator", "Split")
-        val mutatorRightButton = findViewById<ImageView>(R.id.mutatorbuttonright) //corrected ID
-        val mutatorLeftButton = findViewById<ImageView>(R.id.mutatorbuttonleft)  //corrected ID
-        val difficultyRightButton = findViewById<ImageView>(R.id.difficultyright) //corrected ID
-        val difficultyLeftButton = findViewById<ImageView>(R.id.difficultyleft)  //corrected ID
+
+        sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        //TODO switch this back to the Main. unlockedMutators when done testing
+        val availableMutators = MainActivity.GameModeStates.unlockedForTesting.toMutableList()
+        val difficultyList = mutableListOf("Easy", "Normal", "Hard")
+
+        val mutatorRightButton = findViewById<ImageView>(R.id.mutatorbuttonright)
+        val mutatorLeftButton = findViewById<ImageView>(R.id.mutatorbuttonleft)
+        val difficultyRightButton = findViewById<ImageView>(R.id.difficultyright)
+        val difficultyLeftButton = findViewById<ImageView>(R.id.difficultyleft)
         val mutatorText = findViewById<TextView>(R.id.mutatortext)
         val difficultyText = findViewById<TextView>(R.id.difficultytext)
-        var difficultyList = mutableListOf<String>("Easy", "Normal", "Hard") //added difficulty list
-        var currentDifficultyIndex = 1; // added difficulty index
-        var currentMutatorIndex = 0;
-        mutatorText.text = mutatorList[currentMutatorIndex]
+
+        // Load saved settings or use defaults
+        var currentMutatorIndex = availableMutators.indexOf(sharedPreferences.getString(KEY_MUTATOR, "No Mutator"))
+        var currentDifficultyIndex = difficultyList.indexOf(sharedPreferences.getString(KEY_DIFFICULTY, "Normal"))
+
+        // Ensure indices are valid
+        if (currentMutatorIndex == -1) currentMutatorIndex = 0
+        if (currentDifficultyIndex == -1) currentDifficultyIndex = 1
+
+        mutatorText.text = availableMutators[currentMutatorIndex]
         difficultyText.text = difficultyList[currentDifficultyIndex]
         MainActivity.GameModeStates.gameDifficulty = difficultyText.text.toString()
+        updateMutatorState(mutatorText.text.toString())
+
         mutatorRightButton.setOnClickListener {
-            currentMutatorIndex = (currentMutatorIndex + 1) % mutatorList.size
-            mutatorText.text = mutatorList[currentMutatorIndex]
-            if(mutatorText.text == "No Mutator"){
-                MainActivity.GameModeStates.isSplitModeActive=false
-            }
-            if(mutatorText.text == "Split"){
-                MainActivity.GameModeStates.isSplitModeActive=true
-            }
+            currentMutatorIndex = (currentMutatorIndex + 1) % availableMutators.size
+            mutatorText.text = availableMutators[currentMutatorIndex]
+            updateMutatorState(mutatorText.text.toString())
+            saveSettings()
         }
         mutatorLeftButton.setOnClickListener {
-            currentMutatorIndex = (currentMutatorIndex - 1 + mutatorList.size) % mutatorList.size
-            mutatorText.text = mutatorList[currentMutatorIndex]
-            if(mutatorText.text == "No Mutator"){
-                MainActivity.GameModeStates.isSplitModeActive=false
-            }
-            if(mutatorText.text == "Split"){
-                MainActivity.GameModeStates.isSplitModeActive=true
-            }
+            currentMutatorIndex = (currentMutatorIndex - 1 + availableMutators.size) % availableMutators.size
+            mutatorText.text = availableMutators[currentMutatorIndex]
+            updateMutatorState(mutatorText.text.toString())
+            saveSettings()
         }
 
         //difficulty buttons logic
@@ -54,18 +64,33 @@ class Settings : AppCompatActivity() {
             currentDifficultyIndex = (currentDifficultyIndex + 1) % difficultyList.size
             difficultyText.text = difficultyList[currentDifficultyIndex]
             MainActivity.GameModeStates.gameDifficulty = difficultyText.text.toString()
+            saveSettings()
         }
         difficultyLeftButton.setOnClickListener {
             currentDifficultyIndex = (currentDifficultyIndex - 1 + difficultyList.size) % difficultyList.size
             difficultyText.text = difficultyList[currentDifficultyIndex]
             MainActivity.GameModeStates.gameDifficulty = difficultyText.text.toString()
+            saveSettings()
         }
-
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
+    }
+
+    private fun updateMutatorState(mutator: String) {
+        MainActivity.GameModeStates.isSplitModeActive = mutator == "Split"
+        MainActivity.GameModeStates.isChaosModeActive = mutator == "Chaos"
+    }
+
+    private fun saveSettings() {
+        val editor = sharedPreferences.edit()
+        val currentMutator = findViewById<TextView>(R.id.mutatortext).text.toString()
+        val currentDifficulty = findViewById<TextView>(R.id.difficultytext).text.toString()
+        editor.putString(KEY_MUTATOR, currentMutator)
+        editor.putString(KEY_DIFFICULTY, currentDifficulty)
+        editor.apply()
     }
 }

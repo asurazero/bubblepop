@@ -3,10 +3,9 @@ package com.game.bubblepop
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.PointF
-import kotlin.math.sqrt
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 enum class BubbleType {
@@ -14,7 +13,6 @@ enum class BubbleType {
     NEGATIVE,
     POWER_UP
 }
-
 
 class Bubble(
     val id: Int,
@@ -29,24 +27,26 @@ class Bubble(
     var isRed: Boolean = false,
     var popLifespanMultiplier: Float = 1f,
     var isShrinking: Boolean = false,
-    var velocityX: Float = 0f,  // Added for split bubble movement
-    var velocityY: Float = 0f,   // Added for split bubble movement
-    var canSplit: Boolean = false // Added for split mode
+    var velocityX: Float = 0f,
+    var velocityY: Float = 0f,
+    var canSplit: Boolean = false,
+    var isChaoticMovementEnabled: Boolean = false, // New flag for chaotic movement
+    private val chaosFactor: Float = 3f // Adjust this value to control chaos intensity
 ) {
     init {
-        // Initialize velocity here.  Make sure the bubbles go down
-        velocityY = Random.nextFloat() + 1f // Ensure a minimum downward speed
-        velocityX = (Random.nextFloat() - 0.5f) * 3f // Give a little horizontal movement
+        // Initialize velocity here. Make sure the bubbles go down initially
+        velocityY = Random.nextFloat() + 1f
+        velocityX = (Random.nextFloat() - 0.5f) * 2f // Less initial horizontal movement
     }
 
     private val normalPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = Color.argb(200, 0, 100, 200)
     }
-    private val normalStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { //added paint
+    private val normalStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         color = Color.BLACK
-        strokeWidth = 2f // Adjust the width as needed
+        strokeWidth = 2f
     }
 
     private val approachingPopPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -69,7 +69,7 @@ class Bubble(
             else -> normalPaint
         }
         canvas.drawCircle(x, y, radius, paintToUse)
-        if (bubbleType == BubbleType.NORMAL) { //added if statement
+        if (bubbleType == BubbleType.NORMAL) {
             canvas.drawCircle(x, y, radius, normalStrokePaint)
         }
 
@@ -90,20 +90,19 @@ class Bubble(
         if (bubbleType == BubbleType.NEGATIVE) {
             val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE
-                color = Color.BLACK // Darker outline
+                color = Color.BLACK
                 strokeWidth = radius * 0.1f
             }
-            canvas.drawCircle(x, y, radius, strokePaint) // Draw an outline
+            canvas.drawCircle(x, y, radius, strokePaint)
 
             val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.BLACK
-                textSize = radius * 0.6f // Slightly smaller text
+                textSize = radius * 0.6f
                 textAlign = Paint.Align.CENTER
-                typeface = android.graphics.Typeface.DEFAULT_BOLD // Make it bold
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
             }
             canvas.drawText("-1", x, y + textPaint.textSize / 3, textPaint)
 
-            // Add some subtle inner details (optional)
             val innerCircleRadius = radius * 0.4f
             val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE
@@ -128,15 +127,15 @@ class Bubble(
     }
 
     companion object {
-        private const val MAX_RADIUS = 200f // Moved to companion object
+        const val MAX_RADIUS = 200f // It's good practice to keep constants in the companion object
 
         fun createSplitBubbles(poppedBubble: Bubble): List<Bubble> {
             val newRadius = poppedBubble.radius / 1.5f
             if (newRadius < 10f) {
-                return emptyList() // Don't create bubbles too small
+                return emptyList()
             }
 
-            val speed = 2f
+            val speed = 0.2f
             val angle1 = Random.nextDouble(0.0, 2 * Math.PI).toFloat()
             val angle2 = (angle1 + Math.PI + Random.nextDouble(-0.1, 0.1)).toFloat()
 
@@ -167,23 +166,46 @@ class Bubble(
     }
 
     fun update(screenWidth: Int, screenHeight: Int) {
-        x += velocityX
-        y += velocityY
+        if (MainActivity.GameModeStates.isChaosModeActive) {
+            velocityX += Random.nextFloat() * chaosFactor - chaosFactor / 2
+            velocityY += Random.nextFloat() * chaosFactor * 0.2f - chaosFactor * 0.1f // Slight vertical variation
 
-        if (x + radius > screenWidth) {
-            x = screenWidth - radius;
-            velocityX = -velocityX;
-        } else if (x - radius < 0) {
-            x = radius;
-            velocityX = -velocityX;
-        }
+            // Damping effect to prevent excessive speed
+            velocityX *= 0.98f
+            velocityY *= 0.98f
 
-        if (y + radius > screenHeight) {
-            y = screenHeight - radius;
-            velocityY = -velocityY;
-        } else if (y - radius < 0) {
-            y = radius;
-            velocityY = -velocityY;
+            // Keep bubbles within horizontal bounds with damping on collision
+            if (x + radius > screenWidth) {
+                x = screenWidth - radius
+                velocityX *= -0.8f
+            } else if (x - radius < 0) {
+                x = radius
+                velocityX *= -0.8f
+            }
+
+            // Keep bubbles within vertical bounds with damping on collision
+            if (y + radius > screenHeight) {
+                y = screenHeight - radius
+                velocityY *= -0.8f
+            } else if (y - radius < 0) {
+                y = radius
+                velocityY *= -0.8f
+            }
+
+            x += velocityX
+            y += velocityY
+
+        } else {
+            // Default downward movement with slight initial horizontal drift
+            y += velocityY
+            x += velocityX
+
+            if (x + radius > screenWidth || x - radius < 0) {
+                velocityX *= -1f
+            }
+            if (y + radius > screenHeight || y - radius < 0) {
+                velocityY *= -1f // Basic bounce off top/bottom if needed
+            }
         }
     }
 }

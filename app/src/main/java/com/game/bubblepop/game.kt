@@ -324,11 +324,11 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
 
     fun update() {
 
-        if(MainActivity.GameModeStates.isSplitModeActive==true){
-            isSplitModeActive=true
-        }else isSplitModeActive=false
+        if (MainActivity.GameModeStates.isSplitModeActive == true) {
+            isSplitModeActive = true
+        } else isSplitModeActive = false
 
-        if (!gameActive)return
+        if (!gameActive) return
         musicPlayer.startLooping()
         val currentTime = System.currentTimeMillis()
 
@@ -366,16 +366,16 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 //TODO add metered rectangle speed as it gets higher it gets slower
                 //TODO revert this back after game over tests
                 rectangleRiseSpeed = 0.1f
-                if (MainActivity.GameModeStates.gameDifficulty=="Easy"){
+                if (MainActivity.GameModeStates.gameDifficulty == "Easy") {
                     rectangleRiseSpeed = 0.0f
                 }
-                if (MainActivity.GameModeStates.gameDifficulty=="Normal"){
+                if (MainActivity.GameModeStates.gameDifficulty == "Normal") {
                     rectangleRiseSpeed = 0.1f
                 }
-                if (MainActivity.GameModeStates.gameDifficulty=="Hard"){
-                    rectangleRiseSpeed = 0.5f
+                if (MainActivity.GameModeStates.gameDifficulty == "Hard") {
+                    rectangleRiseSpeed = 0.2f
                 }
-                 //set normal at 0.1f //4.0 or 2.5 for game over tests
+                //set normal at 0.1f //4.0 or 2.5 for game over tests
                 redrawListener?.onRedrawRequested()
             }
         } else if (isRectangleActive) {
@@ -438,7 +438,8 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                         bubblesToRemove.add(bubble)
                     }
                 }
-                bubble.update(screenWidth.toInt(), screenHeight.toInt()) // Call the update function for each bubble.
+                // Update bubble movement (including chaotic if enabled)
+                bubble.update(screenWidth.toInt(), screenHeight.toInt())
                 if (bubble.y >= screenHeight) {  //check here
                     bubblesToRemove.add(bubble)
                 }
@@ -451,6 +452,10 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 // bubbles = remainingBubbles
             }
         }
+
+        bubbles.removeAll(bubblesToRemove) // Remove all marked bubbles outside the loop
+        lastUpdateTime = currentTime
+        redrawListener?.onRedrawRequested()
 
         if (isBombActive) {
             val bombEffectedBubbles = mutableListOf<Bubble>()
@@ -577,9 +582,25 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             if (MainActivity.GameModeStates.gameDifficulty=="Normal"){
                 score += removedCount * level
             }
-            if (MainActivity.GameModeStates.gameDifficulty=="Hard"||MainActivity.GameModeStates.isSplitModeActive==true){
-                score += removedCount * level*4
+            if (MainActivity.GameModeStates.gameDifficulty=="Hard"||
+                MainActivity.GameModeStates.isSplitModeActive==true||
+                MainActivity.GameModeStates.isChaosModeActive==true){
+                var scoreBooster=50
+                if (MainActivity.GameModeStates.gameDifficulty=="Hard"){
+                score += removedCount * (level+scoreBooster)
+                }
+                if (MainActivity.GameModeStates.isSplitModeActive==true){
+                    scoreBooster+=15
+                    score += removedCount * (level+scoreBooster)
+                }
+                if (MainActivity.GameModeStates.isChaosModeActive==true){
+                    scoreBooster+=10
+                    score += removedCount * (level+scoreBooster)
+                }
+
             }
+
+
 
             soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
             if (isSplitModeActive) { //check if split mode is active.
@@ -729,7 +750,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             adFrequency = 10
             increaseDifficulty()
         }
-        if (level > 20) {
+        if (level > 21) {
             adFrequency = 20
             increaseDifficulty()
         }
@@ -828,6 +849,22 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
     fun setDraggingBomb(dragging: Boolean) {
         draggingBomb = dragging
     }
+    fun shouldShowAd(): Boolean {
+        return if (levelsSinceAd >= adFrequency && interstitialAd != null) {
+            levelsSinceAd = 0
+            true
+        } else {
+            false
+        }
+    }
+
+    fun setInterstitialAd(ad: InterstitialAd?) {
+        interstitialAd = ad
+    }
+
+
+    private var adFrequency = 10
+
 
     fun endGame() {
         gameActive = false
