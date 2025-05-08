@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import android.util.Log // Import Log
 
 class Settings : AppCompatActivity() {
 
@@ -23,7 +24,8 @@ class Settings : AppCompatActivity() {
 
         sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         //TODO switch this back to the Main. unlockedMutators when done testing
-        val availableMutators = MainActivity.GameModeStates.unlockedForTesting.toMutableList()
+        val availableMutators = MainActivity.GameModeStates.unlockedMutators.toMutableList()
+        //val availableMutators = MainActivity.GameModeStates.unlockedForTesting.toMutableList()
         val difficultyList = mutableListOf("Easy", "Normal", "Hard")
 
         val mutatorRightButton = findViewById<ImageView>(R.id.mutatorbuttonright)
@@ -51,12 +53,14 @@ class Settings : AppCompatActivity() {
             mutatorText.text = availableMutators[currentMutatorIndex]
             updateMutatorState(mutatorText.text.toString())
             saveSettings()
+            Log.d("Settings", "Mutator Right Clicked. New Mutator: ${mutatorText.text}") //added logs
         }
         mutatorLeftButton.setOnClickListener {
             currentMutatorIndex = (currentMutatorIndex - 1 + availableMutators.size) % availableMutators.size
             mutatorText.text = availableMutators[currentMutatorIndex]
             updateMutatorState(mutatorText.text.toString())
             saveSettings()
+            Log.d("Settings", "Mutator Left Clicked. New Mutator: ${mutatorText.text}")//added logs
         }
 
         //difficulty buttons logic
@@ -65,12 +69,14 @@ class Settings : AppCompatActivity() {
             difficultyText.text = difficultyList[currentDifficultyIndex]
             MainActivity.GameModeStates.gameDifficulty = difficultyText.text.toString()
             saveSettings()
+            Log.d("Settings", "Difficulty Right Clicked. New Difficulty: ${difficultyText.text}")//added logs
         }
         difficultyLeftButton.setOnClickListener {
             currentDifficultyIndex = (currentDifficultyIndex - 1 + difficultyList.size) % difficultyList.size
             difficultyText.text = difficultyList[currentDifficultyIndex]
             MainActivity.GameModeStates.gameDifficulty = difficultyText.text.toString()
             saveSettings()
+            Log.d("Settings", "Difficulty Left Clicked. New Difficulty: ${difficultyText.text}")//added logs
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
@@ -83,6 +89,7 @@ class Settings : AppCompatActivity() {
     private fun updateMutatorState(mutator: String) {
         MainActivity.GameModeStates.isSplitModeActive = mutator == "Split"
         MainActivity.GameModeStates.isChaosModeActive = mutator == "Chaos"
+        Log.d("Settings", "updateMutatorState called. isSplitModeActive: ${MainActivity.GameModeStates.isSplitModeActive}, isChaosModeActive: ${MainActivity.GameModeStates.isChaosModeActive}")
     }
 
     private fun saveSettings() {
@@ -92,5 +99,6 @@ class Settings : AppCompatActivity() {
         editor.putString(KEY_MUTATOR, currentMutator)
         editor.putString(KEY_DIFFICULTY, currentDifficulty)
         editor.apply()
+        Log.d("Settings", "saveSettings called. Mutator saved: $currentMutator, Difficulty saved: $currentDifficulty") //added logs
     }
 }

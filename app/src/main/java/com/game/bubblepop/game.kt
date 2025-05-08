@@ -30,6 +30,11 @@ import kotlin.random.Random
 
 class Game(private val screenWidth: Float, private val screenHeight: Float, private val context: Context) {
     // Public getter for gameActive
+    object appWideGameData{
+        var playerXP: Int=0
+    }
+
+
     fun isGameActive(): Boolean {
         return gameActive
     }
@@ -97,7 +102,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
         }
 
     private var interstitialAd: InterstitialAd? = null
-    private val adUnitId = context.getString(R.string.inter_test)// Replace with your actual AdMob Interstitial Ad Unit ID
+    private var adUnitId = context.getString(R.string.inter_test)// Replace with your actual AdMob Interstitial Ad Unit ID
     private var levelsSinceAd = 0
     private val maxAllowedBubbleRadius = 250f // Define your maximum allowed radius
     private val maxSpawnInterval: Long = 4
@@ -185,13 +190,26 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
 
     var adDismissedListener: AdDismissedListener? = null
 
+
+
+    fun initializeAdUnitId(context: Context) { // Added function to initialize adUnitId
+        adUnitId = context.getString(R.string.inter_test)
+    }
+
     private fun loadInterstitialAd() {
         Log.d("AdFlow", "loadInterstitialAd() called.")
+        if (adUnitId.isEmpty()) {
+            Log.e("AdFlow", "Ad unit ID is not initialized!")
+            return  // Important: Stop if ad unit ID is not set
+        }
         val adRequest = AdRequest.Builder().build()
         InterstitialAd.load(context, adUnitId, adRequest, object : InterstitialAdLoadCallback() {
             override fun onAdFailedToLoad(adError: LoadAdError) {
                 interstitialAd = null
-                Log.e("AdFlow", "onAdFailedToLoad() called. Error: ${adError.message}, code: ${adError.code}, domain: ${adError.domain}")
+                Log.e(
+                    "AdFlow",
+                    "onAdFailedToLoad() called. Error: ${adError.message}, code: ${adError.code}, domain: ${adError.domain}"
+                )
             }
 
             override fun onAdLoaded(ad: InterstitialAd) {
@@ -202,58 +220,67 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                         Log.d("AdFlow", "onAdDismissedFullScreenContent() called. Ad instance: $interstitialAd")
                         interstitialAd = null
                         loadInterstitialAd() // Load the next ad
-                        gameActive = false // Keep game inactive until user clicks
+                        gameActive =
+                            false // Keep game inactive until user clicks.  Make sure gameActive is in Game Class
                         adDismissedListener?.onAdDismissed() // Notify the activity
                     }
 
                     override fun onAdFailedToShowFullScreenContent(adError: com.google.android.gms.ads.AdError) {
-                        Log.e("AdFlow", "onAdFailedToShowFullScreenContent() called. Error: ${adError.message}, code: ${adError.code}")
+                        Log.e(
+                            "AdFlow",
+                            "onAdFailedToShowFullScreenContent() called. Error: ${adError.message}, code: ${adError.code}"
+                        )
                         interstitialAd = null
                         loadInterstitialAd() // Attempt to load another ad
-                        gameActive = true // Resume the game (ad failed to show)
-                        // Optionally notify the activity here as well if you want the message
-                        // even if the ad failed to show.
+                        gameActive =
+                            true // Resume the game (ad failed to show). Make sure gameActive is in Game Class
+                        // Consider NOTIFYING the activity here, so the activity knows.
+                        adDismissedListener?.onAdDismissed()
                     }
 
                     override fun onAdShowedFullScreenContent() {
-                        decrementMissedBubbles()
+                        decrementMissedBubbles() //  Make sure this is in Game Class
                         Log.d("AdFlow", "onAdShowedFullScreenContent() called. Ad instance: $interstitialAd")
-                        // Called when ad is shown.
+                        loadInterstitialAd()  // Preload next ad
                     }
                 }
             }
         })
     }
-    private fun showInterstitialAd() {
+
+    private fun showInterstitialAd(context: Context) { // Pass context
         Log.d("AdFlow", "showInterstitialAd() called. Ad instance: $interstitialAd")
         if (interstitialAd != null) {
             Log.d("AdFlow", "Interstitial ad is not null, attempting to show.")
-            if (context is GamePlay) {
-                mainThreadHandler.post { // Wrap the show call in this block
-                    try {
-                        Log.d("AdFlow", "About to show interstitial ad. Context: ${context::class.java.name}") // Log context
-                        interstitialAd?.show(context as GamePlay)
-                        Log.d("AdFlow", "Interstitial ad shown successfully.") // Log success
-                    } catch (e: Exception) {
-                        Log.e("AdFlow", "Error showing interstitial ad: ${e.message}, Context: ${context::class.java.name}, Thread: ${Thread.currentThread().name}") // Log the exception and context and thread
-                        gameActive = true
-                        addRandomBubble()
-                    } finally {
-                        Log.d("AdFlow", "Finally block executed after ad show attempt. Thread: ${Thread.currentThread().name}")
-                    }
+            if (context is GamePlay) { // Use the passed context
+                try {
+                    Log.d("AdFlow", "About to show interstitial ad. Context: ${context::class.java.name}")
+                    interstitialAd?.show(context) // Use the passed context to show
+                    Log.d("AdFlow", "Interstitial ad shown successfully.")
+                } catch (e: Exception) {
+                    Log.e(
+                        "AdFlow",
+                        "Error showing interstitial ad: ${e.message}, Context: ${context::class.java.name}, Thread: ${Thread.currentThread().name}"
+                    )
+                    gameActive =
+                        true // Resume the game.  Make sure gameActive is in Game Class
+                    //  addRandomBubble() //  NO Add bubble here.  The activity should control game flow
+                } finally {
+                    Log.d("AdFlow", "Finally block executed after ad show attempt. Thread: ${Thread.currentThread().name}")
                 }
             } else {
-                Log.e("AdFlow", "Invalid context to show ad. context = ${context::class.java.name}") // Log context
-                gameActive = true
-                addRandomBubble()
+                Log.e("AdFlow", "Invalid context to show ad. context = ${context::class.java.name}")
+                gameActive =
+                    true // Resume the game.  Make sure gameActive is in Game Class
+                // addRandomBubble() //  NO Add bubble here.  The activity should control game flow
             }
         } else {
             Log.e("AdFlow", "Interstitial ad is null, cannot show.")
-            gameActive = true
-            addRandomBubble()
+            gameActive =
+                true // Resume the game. Make sure gameActive is in Game Class
+            // addRandomBubble()  //  NO Add bubble here.  The activity should control game flow
         }
     }
-
 
     // ... rest of your Game class ...
 
@@ -373,7 +400,8 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                     rectangleRiseSpeed = 0.1f
                 }
                 if (MainActivity.GameModeStates.gameDifficulty == "Hard") {
-                    rectangleRiseSpeed = 0.2f
+                    //TODO reset after testing
+                    rectangleRiseSpeed = 1.0f //0.2 for regular
                 }
                 //set normal at 0.1f //4.0 or 2.5 for game over tests
                 redrawListener?.onRedrawRequested()
@@ -763,7 +791,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
         if (level % adFrequency == 0 && levelsSinceAd >= adFrequency && interstitialAd != null) {
             Log.d("AdFlow", "Attempting to show interstitial ad at level $level (frequency: $adFrequency).")
             gameActive = false
-            showInterstitialAd()
+            showInterstitialAd(context)
             levelsSinceAd = 0
         } else {
             Log.d("AdFlow", "Interstitial ad conditions not met at level $level (frequency: $adFrequency). Ad ready: ${interstitialAd != null}")

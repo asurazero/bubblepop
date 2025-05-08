@@ -1,11 +1,16 @@
 package com.game.bubblepop
 
+import android.animation.Animator
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.media.AudioAttributes
 import android.media.SoundPool
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.widget.ImageView
@@ -19,17 +24,30 @@ import com.google.android.gms.ads.MobileAds
 import com.google.firebase.FirebaseApp
 import java.io.Serializable
 
-//  ScoreListener is in interfaces.kt  (Correct - defined in a separate file)
+//  ScoreListener is in interfaces.kt
 
 class MainActivity : AppCompatActivity(), ScoreListener {
     // GameModeStates object to hold game mode states
-   object GameModeStates {
+    object GameModeStates {
         var isChaosModeActive = false
         var isSplitModeActive = false
         var gameDifficulty = "Normal"
-        var unlockedMutators = mutableSetOf<String>("No Mutator")
-        var unlockedForTesting=  mutableSetOf<String>("No Mutator","Split","Chaos")
-   }
+        var  unlockedMutators = mutableSetOf<String>("No Mutator")
+        var unlockedForTesting = mutableSetOf("No Mutator", "Split", "Chaos")
+
+        // Function to get available mutators based on level
+        fun getAvailableMutators(level: Int, levelUpThresholds: Map<Int, String>): Set<String> {
+            val availableMutators = mutableSetOf("No Mutator") // Always include "No Mutator"
+            for ((unlockLevel, mutatorName) in levelUpThresholds) {
+                if (level >= unlockLevel) {
+                    availableMutators.add(mutatorName)
+                    unlockedMutators=availableMutators
+
+                }
+            }
+            return availableMutators
+        }
+    }
 
     private lateinit var levelTextView: TextView
     private lateinit var xpProgressBar: ProgressBar
@@ -41,14 +59,26 @@ class MainActivity : AppCompatActivity(), ScoreListener {
     private val KEY_HIGH_SCORE = "high_score"
     private val KEY_XP = "xp"
     private val KEY_LEVEL = "level"
-    private val KEY_UNLOCKED_MUTATORS = "unlocked_mutators"
-    private var currentXP: Int = 0
+    //  private val KEY_UNLOCKED_MUTATORS = "unlocked_mutators" <- REMOVED
+    private var currentXP: Int = 0 //backing property for display
+        private set(value) {
+            field = value
+        }
+    private var totalXP: Int = 0 // Separate variable to track total XP
     private var currentLevel: Int = 1
-    private val xpPerScore = 10f // Changed to Float for more reasonable XP gain
+        private set(value) { //use set() to update
+            field = value
+            previousLevel = value //update previous level
+        }
+    private val xpPerScore = 10f
     private val levelUpThresholds = mapOf(
         2 to "Split",
         5 to "Chaos"
     )
+    private val handler = Handler(Looper.getMainLooper())
+    private var isLevelUpInProgress = false //track level up
+    private var previousLevel = 1 //keep track of the previous level
+    private var dataLoaded = false // Track if data is loaded
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,9 +92,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
 
         // Initialize shared preferences
         sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        loadGameProgress() // Load game progress
-
-        updateLevelUI() // Initial update of level UI
+        loadGameProgress() // Load game progress  -  Moved to its own call
 
         // Initialize and set up UI elements
         val scoresButton = findViewById<ImageView>(R.id.scoresbutton)
@@ -76,6 +104,11 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         // Intent for starting the GamePlay activity.
         val intent = Intent(this, GamePlay::class.java)
         // Pass the activity as ScoreListener
+        // Debug button to reset progress
+        val resetProgressButton = findViewById<android.widget.Button>(R.id.resetProgressButton)
+        resetProgressButton.setOnClickListener {
+            resetGameProgress()
+        }
 
         // SoundPool for playing sound effects
         val audioAttributes = AudioAttributes.Builder()
@@ -90,28 +123,37 @@ class MainActivity : AppCompatActivity(), ScoreListener {
 
         // Set click listener for the start button to begin the game.
         startButton.setOnClickListener {
-            soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f) // Play sound effect
-            startActivity(intent) // Start the game activity
+            if (dataLoaded) { // Only start if data is loaded
+                soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f) // Play sound effect
+                startActivityForResult(intent, 123) // Start GamePlay and expect a result
+            } else {
+                Log.w("MainActivity", "Start button clicked before data loaded")
+                // Optionally, show a message to the user that the game is loading.
+            }
         }
 
         //show high score
         scoresButton.setOnClickListener {
-            soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f)
-            displayHighScore()
-            scoreDisplay.visibility = View.VISIBLE
-            scoreDisplayText.visibility = View.VISIBLE
-            scoreDisplay.setOnClickListener {
+            if (dataLoaded) {
                 soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f)
-                scoreDisplay.visibility = View.GONE
-                scoreDisplayText.visibility = View.GONE
+                displayHighScore()
+                scoreDisplay.visibility = View.VISIBLE
+                scoreDisplayText.visibility = View.VISIBLE
+                scoreDisplay.setOnClickListener {
+                    soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f)
+                    scoreDisplay.visibility = View.GONE
+                    scoreDisplayText.visibility = View.GONE
+                }
             }
         }
 
         // Start the settings activity when the settings button is clicked.
         settingsButton.setOnClickListener {
-            soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f)
-            val intent = Intent(this, Settings::class.java)
-            startActivity(intent)
+            if (dataLoaded) {
+                soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f)
+                val intent = Intent(this, Settings::class.java)
+                startActivity(intent)
+            }
         }
 
         // Initialize Mobile Ads and Firebase.
@@ -126,71 +168,252 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         }
     }
 
+    // Handle the result from GamePlay
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 123) { // Make sure the request code matches
+            if (resultCode == RESULT_OK) {
+                val finalScore = data?.getIntExtra("finalScore", 0) ?: 0
+                Log.d("MainActivity", "Received final score: $finalScore")
+                onScoreEarned(finalScore) // Award XP based on the received score
+            } else {
+                Log.d("MainActivity", "GamePlay finished without a result or with an error.")
+            }
+        }
+    }
+
     // Implementation of the onScoreEarned method from the ScoreListener interface.
     override fun onScoreEarned(score: Int) {
         Log.d("MainActivity", "onScoreEarned called with score: $score")
         awardXP(score) // Award XP based on the score earned.
+        updateHighScore(score) // Moved highScore update here
     }
 
     // Method to award XP to the player.
     private fun awardXP(score: Int) {
         Log.d("MainActivity", "awardXP called with score: $score")
-        currentXP += (score * xpPerScore).toInt() // Calculate and add XP.
-        Log.d("MainActivity", "Current XP after award: $currentXP")
-        checkLevelUp() // Check if the player has leveled up.
+        val earnedXP = (score * xpPerScore).toInt()
+        Log.d("MainActivity", "Earned XP: $earnedXP")
+        totalXP += earnedXP // Update the total XP
+        animateLevelProgress(earnedXP)
     }
 
-    // Method to check if the player has leveled up.
-    private fun checkLevelUp() {
-        val nextLevel = currentLevel + 1
-        val nextLevelThreshold = getXpThresholdForLevel(nextLevel)
-        Log.d("MainActivity", "Checking level up - Current XP: $currentXP, Next Level Threshold ($nextLevel): $nextLevelThreshold")
-        if (currentXP >= nextLevelThreshold) {
-            Log.d("MainActivity", "Level UP! From level $currentLevel to ${currentLevel + 1}")
-            currentLevel = nextLevel // Increment the player's level.
-            unlockNewMutator(currentLevel) // Unlock mutator
-            saveGameProgress() // Save
+    private fun animateLevelProgress(earnedXP: Int) {
+        if (isLevelUpInProgress) {
+            Log.w("MainActivity", "Level up animation in progress, delaying XP animation.")
+            handler.postDelayed({ animateLevelProgress(earnedXP) }, 500) //try again after delay
+            return
         }
-        updateLevelUI() //update
-    }
 
-    // Method to get the XP threshold for a given level.
-    private fun getXpThresholdForLevel(level: Int): Int {
-        val threshold = level * 100
-        Log.d("MainActivity", "getXpThresholdForLevel - Level: $level, Threshold: $threshold")
-        return threshold
-    }
+        var startXP = currentXP
+        var endXP = startXP + earnedXP
+        var startLevel = currentLevel
+        var endLevel = calculateLevel(totalXP) //calculate target level using totalXP
 
-    // Method to unlock a new mutator based on the player's level.
-    private fun unlockNewMutator(level: Int) {
-        val mutatorToUnlock = levelUpThresholds[level] // Get the mutator for the level.
-        Log.d("MainActivity", "unlockNewMutator called for level: $level, Mutator to unlock: $mutatorToUnlock")
-        mutatorToUnlock?.let {
-            if (!GameModeStates.unlockedMutators.contains(it)) {
-                Log.d("MainActivity", "Mutator '$it' unlocked!")
-                GameModeStates.unlockedMutators.add(it) // Add the mutator to the unlocked list.
-                saveGameProgress() // Save
+        val levelDuration = 1000L  // 1 second per level
+        val xpDuration = 1500L // Increased duration for smoother animation
+        val totalDuration = if (startLevel != endLevel) levelDuration + xpDuration else xpDuration
+
+        if (startLevel != endLevel) {
+            isLevelUpInProgress = true
+            val levelIncrement = endLevel - startLevel
+            val levelAnimationDuration = levelIncrement * levelDuration
+            ObjectAnimator.ofInt(this, "currentLevel", startLevel, endLevel).apply {
+                duration = levelAnimationDuration
+                addUpdateListener {
+                    val newLevel = it.animatedValue as Int
+                    handler.post {
+                        setLevelTextView(newLevel)
+                    }
+                }
+                addListener(object: Animator.AnimatorListener{
+                    override fun onAnimationEnd(animation: Animator) {
+                        currentLevel = endLevel
+                        saveGameProgress()
+                    }
+
+                    override fun onAnimationStart(animation: Animator) {}
+                    override fun onAnimationCancel(animation: Animator) {}
+                    override fun onAnimationRepeat(animation: Animator) {}
+                })
+                start()
+            }
+
+            // Animate xp progress to 100
+            val startProgress = calculateProgress(startXP, startLevel)
+            val endProgress = 100
+            ValueAnimator.ofInt(startProgress, endProgress).apply {
+                duration = levelDuration
+                addUpdateListener {
+                    val animatedValue = it.animatedValue as Int
+                    handler.post { setXpProgress(animatedValue) }
+                }
+                start()
+            }
+
+            startXP = getXpThresholdForLevel(startLevel + 1)
+            val remainingXP = earnedXP - (getXpThresholdForLevel(startLevel + 1) - startXP)
+
+            ValueAnimator.ofInt(0, remainingXP).apply {
+                duration = xpDuration
+                startDelay = levelAnimationDuration
+                addUpdateListener {
+                    val animatedValue = it.animatedValue as Int
+                    val newProgress = calculateProgress(animatedValue, endLevel)
+                    handler.post {
+                        setXpProgress(newProgress)
+                    }
+                    this@MainActivity.currentXP = endXP
+                }
+                addListener(object : Animator.AnimatorListener {
+                    override fun onAnimationEnd(animation: Animator) {
+                        handler.post {
+                            updateLevelUI()
+                            // unlockNewMutator(endLevel) <- REMOVED
+                            isLevelUpInProgress = false;
+                        }
+                    }
+
+                    override fun onAnimationStart(animation: Animator) {}
+                    override fun onAnimationCancel(animation: Animator) {}
+                    override fun onAnimationRepeat(animation: Animator) {}
+                })
+                start()
+            }
+
+
+
+        } else {
+            // Animate XP progress within the same level
+            val startProgress = calculateProgress(startXP, startLevel)
+            val endProgress = calculateProgress(endXP, endLevel)
+            ValueAnimator.ofInt(startProgress, endProgress).apply {
+                duration = xpDuration
+                addUpdateListener {
+                    val animatedValue = it.animatedValue as Int
+                    handler.post { setXpProgress(animatedValue) }
+                }
+                addListener(object : Animator.AnimatorListener {
+                    override fun onAnimationEnd(animation: Animator) {
+                        handler.post {
+                            this@MainActivity.currentXP = endXP
+                            updateLevelUI()
+                            checkLevelUp()
+                            saveGameProgress() //moved here
+                        }
+                    }
+
+                    override fun onAnimationStart(animation: Animator) {}
+                    override fun onAnimationCancel(animation: Animator) {}
+                    override fun onAnimationRepeat(animation: Animator) {}
+                })
+                start()
             }
         }
     }
 
+    private fun calculateProgress(xp: Int, level: Int): Int {
+        val levelStartXP = getXpThresholdForLevel(level)
+        val levelEndXP = getXpThresholdForLevel(level + 1)
+        return if (levelEndXP > levelStartXP) {
+            ((xp - levelStartXP).toFloat() / (levelEndXP - levelStartXP).toFloat() * 100).toInt()
+        } else {
+            0
+        }
+    }
+
+    // Method to check if the player has leveled up.  RETAINED FOR CHECKING ONLY
+    private fun checkLevelUp() {
+        Log.d("MainActivity", "checkLevelUp - Current XP: $currentXP, Current Level: $currentLevel")
+        var playerLeveledUp = false
+
+        if (totalXP >= getXpThresholdForLevel(currentLevel + 1)) {
+            playerLeveledUp = true
+            val nextLevel = currentLevel + 1
+            Log.d("MainActivity", "Level UP! From level $currentLevel to $nextLevel")
+        }
+
+        if (playerLeveledUp) {
+            Log.d("MainActivity", "Player Leveled Up!  updateLevelUI")
+        } else {
+            Log.d("MainActivity", "Player did NOT level up.")
+        }
+    }
+
+    //calculate level based on xp
+    private fun calculateLevel(xp: Int): Int {
+        var level = 1
+        while (xp >= getXpThresholdForLevel(level + 1)) {
+            level++
+        }
+        return level
+    }
+
+    // Method to get the XP threshold for a given level.
+    private fun getXpThresholdForLevel(level: Int): Int {
+        val threshold = level * 900000
+        Log.d("MainActivity", "getXpThresholdForLevel - Level: $level, Threshold: $threshold")
+        return threshold
+    }
+
+    // Method to unlock a new mutator based on the player's level.  REMOVED
+    /*
+    private fun unlockNewMutator(level: Int) {
+        Log.d("MainActivity", "unlockNewMutator called for level: $level")
+        // Iterate through the levelUpThresholds map to find mutators that should be unlocked
+        for ((unlockLevel, mutatorName) in levelUpThresholds) {
+            Log.d(
+                "MainActivity",
+                "unlockNewMutator: Checking level $level against unlockLevel $unlockLevel for mutator $mutatorName"
+            )
+            if (level >= unlockLevel) { //changed from == to >=
+                if (!GameModeStates.unlockedMutators.contains(mutatorName)) {
+                    Log.d("MainActivity", "Mutator '$mutatorName' unlocked!")
+                    GameModeStates.unlockedMutators.add(mutatorName)
+                    Log.d("MainActivity", "Unlocked Mutators: ${GameModeStates.unlockedMutators}")
+                } else {
+                    Log.d("MainActivity", "Mutator '$mutatorName' already unlocked!")
+                }
+            } else {
+                Log.d(
+                    "MainActivity",
+                    "Level $level is not high enough to unlock  Mutator '$mutatorName'. unlockLevel: $unlockLevel"
+                )
+            }
+        }
+    }
+    */
+
     // Method to load game progress from shared preferences.
     private fun loadGameProgress() {
-        currentXP = sharedPreferences.getInt(KEY_XP, 0) // Load XP
-        currentLevel = sharedPreferences.getInt(KEY_LEVEL, 1) // Load level
-        val savedMutators = sharedPreferences.getStringSet(KEY_UNLOCKED_MUTATORS, setOf("No Mutator"))
-        GameModeStates.unlockedMutators.clear()
-        GameModeStates.unlockedMutators.addAll(savedMutators ?: setOf("No Mutator"))
-        Log.d("MainActivity", "loadGameProgress - XP loaded: $currentXP, Level loaded: $currentLevel, Mutators loaded: $savedMutators")
+        Thread {
+            totalXP = sharedPreferences.getInt(KEY_XP, 0) // Load total XP
+            currentLevel = sharedPreferences.getInt(KEY_LEVEL, 1) // Load level, and set initial
+            previousLevel = currentLevel
+
+            Log.d(
+                "MainActivity",
+                "loadGameProgress - XP loaded: $totalXP, Level loaded: $currentLevel"
+            )
+
+
+            handler.post {
+                // This code runs on the main thread after the data is loaded
+                dataLoaded = true;
+                updateLevelUI() //update level UI after data is loaded.
+            }
+        }.start() // Load data in a background thread
     }
 
     // Method to save game progress to shared preferences.
     private fun saveGameProgress() {
-        Log.d("MainActivity", "saveGameProgress - Saving XP: $currentXP, Level: $currentLevel, Mutators: ${GameModeStates.unlockedMutators}")
+        Log.d(
+            "MainActivity",
+            "saveGameProgress - Saving XP: $totalXP, Level: $currentLevel"
+        )
         val editor = sharedPreferences.edit()
-        editor.putInt(KEY_XP, currentXP) // Save XP
+        editor.putInt(KEY_XP, totalXP) // Save total XP
         editor.putInt(KEY_LEVEL, currentLevel) // Save level
-        editor.putStringSet(KEY_UNLOCKED_MUTATORS, GameModeStates.unlockedMutators) // Save mutators
         editor.apply() // Apply the changes.
     }
 
@@ -213,7 +436,14 @@ class MainActivity : AppCompatActivity(), ScoreListener {
     override fun onResume() {
         super.onResume()
         Log.d("MainActivity", "onResume called")
-        updateLevelUI() //update level UI when returning to main activity
+        if (dataLoaded) {
+            updateLevelUI() //update level, but only if data is loaded.
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Log.d("MainActivity", "onPause called")
     }
 
     // Method to display the high score.
@@ -223,15 +453,17 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         scoreDisplayText.text = "High Score:\n$highScore"
     }
 
-    // Method to update the level UI.
+    // Method to update the level UI.  This method should only be called after dataLoaded is true
     private fun updateLevelUI() {
+        if (!dataLoaded) return;
         levelTextView.text = "Level: $currentLevel" // Display current level
         val nextLevelThreshold = getXpThresholdForLevel(currentLevel + 1)
-        val currentThreshold = getXpThresholdForLevel(currentLevel)
+        val currentThreshold = if (currentLevel == 1) 0 else getXpThresholdForLevel(currentLevel) // Corrected line
         val progress = if (nextLevelThreshold > currentThreshold) {
-            ((currentXP - currentThreshold).toFloat() / (nextLevelThreshold - currentThreshold).toFloat() * 100).toInt()
+            ((totalXP - currentThreshold).toFloat() / (nextLevelThreshold - currentThreshold)
+                .toFloat() * 100).toInt()
         } else {
-            100
+            0 // Ensure progress doesn't go below 0
         }
         xpProgressBar.max = 100
         xpProgressBar.progress = progress
@@ -244,6 +476,37 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         } else {
             nextUnlockTextView.text = "All mutators unlocked!"
         }
+        val availableMutators = GameModeStates.getAvailableMutators(currentLevel, levelUpThresholds)
+        Log.d("MainActivity", "updateLevelUI - Current Level: $currentLevel, Available Mutators: $availableMutators")
+    }
+
+    private fun resetGameProgress() {
+        Log.d("MainActivity", "Resetting game progress")
+        totalXP = 0
+        currentXP = 0
+        currentLevel = 1
+        previousLevel = 1
+        //GameModeStates.unlockedMutators.clear()  <- REMOVED
+        //GameModeStates.unlockedMutators.add("No Mutator") <- REMOVED
+        val editor = sharedPreferences.edit()
+        editor.clear()
+        editor.apply()
+        loadGameProgress() // Reload data
+    }
+
+    //Setter for xp progress bar.
+    fun setXpProgress(progress: Int) {
+        xpProgressBar.progress = progress
+    }
+
+    //Setter for current level
+    fun setLevelTextView(level: Int) { // Changed the name to setLevelTextView
+        levelTextView.text = "Level: $level"
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        soundPool?.release()
+        soundPool = null
     }
 }
-
