@@ -28,14 +28,23 @@ import kotlin.random.Random
 
 
 
-class Game(private val screenWidth: Float, private val screenHeight: Float, private val context: Context) {
+class Game(private val screenWidth: Float, private val screenHeight: Float, private var context: Context) {
     // Public getter for gameActive
     object appWideGameData{
         var playerXP: Int=0
         var globalScore: Int=0
     }
 
+    init {
+        this.context = context // Store the context
+        initializeAdUnitId()  // Initialize ad unit ID
+        loadInterstitialAd()    // Load the ad
+        // ... rest of your Game class initialization ...
+    }
 
+    fun initializeAdUnitId() {
+        adUnitId = context.getString(R.string.inter_test)
+    }
     fun isGameActive(): Boolean {
         return gameActive
     }
@@ -959,9 +968,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                         score += removedCount * level
                         //removed play short seg()
                         soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
-                        if (bubbles.isEmpty()) {
-                            levelUp()
-                        }
+                        //Removed levelUp() call
                     } else {
                         Log.d("Game", "No normal bubbles to pop.")
                     }
@@ -1008,6 +1015,9 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             isBombActive = false
             isBombStopped = false // Ensure bomb stopped is also reset
             redrawListener?.onRedrawRequested()
+            if (bubbles.isEmpty()) {
+                levelUp()
+            }
         }
     }
 
