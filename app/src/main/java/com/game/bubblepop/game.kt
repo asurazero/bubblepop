@@ -32,6 +32,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
     // Public getter for gameActive
     object appWideGameData{
         var playerXP: Int=0
+        var globalScore: Int=0
     }
 
 
@@ -556,7 +557,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
         redrawListener?.onRedrawRequested()
         lastUpdateTime = currentTime
 
-
+        appWideGameData.globalScore=score
     }
 
 

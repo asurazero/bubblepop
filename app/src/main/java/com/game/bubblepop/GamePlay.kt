@@ -2,22 +2,25 @@ package com.game.bubblepop
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import com.game.bubblepop.Game
 
-class GamePlay : AppCompatActivity(), Game.AdDismissedListener, Game.MissedBubbleChangeListener, Game.GameOverListener {
+class GamePlay : AppCompatActivity(), Game.AdDismissedListener, Game.MissedBubbleChangeListener,
+    Game.GameOverListener {
     var isSplitModeActive = false
     private lateinit var gameView: GameView
     private lateinit var game: Game
     private lateinit var continueMessageTextView: TextView
+    private lateinit var endGameTextView: TextView
     private lateinit var gameOverTextView: TextView // Add TextView for game over message
-    private var local_score = 0
+    private var localScore = 0
     private var isGameOver = false // Add a flag to track game over state
-
+    private var endGameOnAdDismiss = false
+    private var adShown = false
     override fun onCreate(savedInstanceState: Bundle?) {
         if (MainActivity.GameModeStates.isSplitModeActive) {
             isSplitModeActive = true
@@ -30,13 +33,14 @@ class GamePlay : AppCompatActivity(), Game.AdDismissedListener, Game.MissedBubbl
         gameView = findViewById(R.id.gameView)
         continueMessageTextView = findViewById(R.id.continueMessageTextView)
         gameOverTextView = findViewById(R.id.gameOverTextView) // Initialize the game over TextView
-
+        endGameTextView = findViewById<TextView>(R.id.endGameTextView)
         val screenWidth = resources.displayMetrics.widthPixels.toFloat()
         val screenHeight = resources.displayMetrics.heightPixels.toFloat()
         game = Game(screenWidth, screenHeight, this)
         game.adDismissedListener = this
         game.missedBubbleChangeListener = this
-        game.gameOverListener = this // CORRECTED LINE: Assign 'this' to the listener property
+        game.gameOverListener =
+            this // CORRECTED LINE: Assign 'this' to the listener property
         gameView.game = game
 
         gameOverTextView.visibility = View.GONE // Initially hide the game over text
@@ -48,20 +52,24 @@ class GamePlay : AppCompatActivity(), Game.AdDismissedListener, Game.MissedBubbl
                     if (!game.isGameActive()) {
                         if (continueMessageTextView.visibility == View.VISIBLE) {
                             continueMessageTextView.visibility = View.GONE
+                            endGameTextView.visibility = View.GONE
                             game.startMusic()
                             game.setGameActive(true)
-                            gameView.invalidate() // Make sure to redraw the view
+                            gameView.invalidate()
                             return@setOnTouchListener true
-                        } else if (isGameOver) { // Use the isGameOver flag here
-                            //  No need to start a new MainActivity here, just let the activity finish
+                        } else if (isGameOver) {
                             val resultIntent = Intent()
-                            resultIntent.putExtra("finalScore", local_score) //changed from score to Game.score
+                            resultIntent.putExtra("finalScore", localScore)
                             setResult(RESULT_OK, resultIntent)
                             finish()
+                            return@setOnTouchListener true
+                        } else if (!adShown) { //show ad only once
+                            endGameOnAdDismiss = true
                             return@setOnTouchListener true
                         }
                     } else if (game.isGameActive()) {
                         game.processClick(event.x, event.y, isSplitModeActive)
+                        localScore = game.getScore() // Get the score here!
                         gameView.invalidate()
                         return@setOnTouchListener true
                     }
@@ -70,11 +78,20 @@ class GamePlay : AppCompatActivity(), Game.AdDismissedListener, Game.MissedBubbl
                 else -> return@setOnTouchListener false
             }
         }
+
+        endGameTextView.setOnClickListener {
+            isGameOver = true // Set the flag when game over occurs.
+            continueMessageTextView.visibility =
+                View.GONE // Hide continue message when game over is shown.
+            endGameTextView.visibility = View.GONE
+            onGameOver(isNewHighScore = false, score = Game.appWideGameData.globalScore)// Redraw to show the game over text.
+        }
     }
 
     override fun onAdDismissed() {
         runOnUiThread {
             continueMessageTextView.visibility = View.VISIBLE
+            endGameTextView.visibility = View.VISIBLE
             game.setGameActive(false)
             gameView.invalidate() // Redraw
         }
@@ -90,16 +107,19 @@ class GamePlay : AppCompatActivity(), Game.AdDismissedListener, Game.MissedBubbl
     override fun onGameOver(isNewHighScore: Boolean, score: Int) {
         runOnUiThread {
             isGameOver = true // Set the flag when game over occurs.
+            println(score)
+            println(Game.appWideGameData.globalScore)
             val gameOverMessage = if (isNewHighScore) {
                 "New High Score!\nScore: $score"
             } else {
                 "Game Over!\nScore: $score"
             }
-            local_score = score
+            localScore = score
             Game.appWideGameData.playerXP = score
             gameOverTextView.text = gameOverMessage
             gameOverTextView.visibility = View.VISIBLE
-            continueMessageTextView.visibility = View.GONE // Hide continue message when game over is shown.
+            continueMessageTextView.visibility =
+                View.GONE // Hide continue message when game over is shown.
             gameView.invalidate() // Redraw to show the game over text.
 
             // No need to do anything here regarding intents.  The touch listener will handle it.
@@ -128,5 +148,13 @@ class GamePlay : AppCompatActivity(), Game.AdDismissedListener, Game.MissedBubbl
     override fun onStop() {
         super.onStop()
         // No need to explicitly stop music here as onPause() will be called before onStop()
+    }
+
+    override fun onBackPressed() {
+        if (game.isGameActive()) {
+            Log.d("GamePlay", "Back button disabled while game is active.")
+        } else {
+            super.onBackPressed()
+        }
     }
 }
