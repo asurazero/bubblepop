@@ -26,7 +26,13 @@ import com.google.android.ump.ConsentDebugSettings
 import com.google.android.ump.ConsentInformation
 import com.google.android.ump.ConsentRequestParameters
 import com.google.android.ump.UserMessagingPlatform
+import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
+import com.google.firebase.analytics.FirebaseAnalytics
+import com.google.firebase.analytics.FirebaseAnalytics.ConsentStatus
+import com.google.firebase.analytics.FirebaseAnalytics.ConsentType
+import com.google.firebase.analytics.analytics
+import com.google.firebase.analytics.setConsent
 import java.io.Serializable
 
 //  ScoreListener is in interfaces.kt
@@ -67,7 +73,6 @@ class MainActivity : AppCompatActivity(), ScoreListener {
     private val KEY_HIGH_SCORE = "high_score"
     private val KEY_XP = "xp"
     private val KEY_LEVEL = "level"
-    //  private val KEY_UNLOCKED_MUTATORS = "unlocked_mutators" <- REMOVED
     private var currentXP: Int = 0 //backing property for display
         private set(value) {
             field = value
@@ -113,12 +118,12 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         val startButton = findViewById<ImageView>(R.id.startbutton)
         // For testing purposes, you can enable debug settings to force a consent dialog
         val debugSettings = ConsentDebugSettings.Builder(this)
-           // .setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_REGULATED_US_STATE) // Ensure this is correct
-           // .addTestDeviceHashedId("YOUR_TEST_DEVICE_ID") // Uncomment and replace with your test device ID if needed
-           // .build()
+        // .setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_REGULATED_US_STATE) // Ensure this is correct
+        // .addTestDeviceHashedId("YOUR_TEST_DEVICE_ID") // Uncomment and replace with your test device ID if needed
+        // .build()
 
         val params = ConsentRequestParameters.Builder()
-           // .setConsentDebugSettings(debugSettings)
+            // .setConsentDebugSettings(debugSettings)
             .build()
 
         consentInformation.requestConsentInfoUpdate(
@@ -133,7 +138,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
                     } else {
                         Log.d("UMP", "Consent form loaded and shown (if required).")
                     }
-
+                    updateFirebaseAnalyticsConsent()
                     if (consentInformation.canRequestAds()) {
                         MobileAds.initialize(this) {}
                         FirebaseApp.initializeApp(this)
@@ -150,6 +155,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
                 Log.w("UMP", "Consent info update failed: ${requestConsentError.message}, code: ${requestConsentError.errorCode}")
                 umpConsentButton.visibility = View.VISIBLE // Show button even if update fails for manual retry
                 umpImage.visibility = View.VISIBLE
+                updateFirebaseAnalyticsConsent(false) // Set denied on failure
             })
 
 
@@ -163,7 +169,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
             resetProgressButton.setOnClickListener {
                 resetGameProgress()
             }
-        }else resetProgressButton.visibility = View.GONE
+        } else resetProgressButton.visibility = View.GONE
 
         // SoundPool for playing sound effects
         val audioAttributes = AudioAttributes.Builder()
@@ -231,6 +237,17 @@ class MainActivity : AppCompatActivity(), ScoreListener {
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
+    }
+    private fun updateFirebaseAnalyticsConsent(granted: Boolean = consentInformation.canRequestAds()) {
+        val consentMap = mutableMapOf<ConsentType, ConsentStatus>().apply {
+            val consentStatus = if (granted) ConsentStatus.GRANTED else ConsentStatus.DENIED
+            this[ConsentType.ANALYTICS_STORAGE] = consentStatus
+            this[ConsentType.AD_STORAGE] = consentStatus
+            this[ConsentType.AD_USER_DATA] = consentStatus
+            this[ConsentType.AD_PERSONALIZATION] = consentStatus
+        }
+        Firebase.analytics.setConsent(consentMap)
+        Log.d("UMP", "Firebase Analytics consent updated. Granted: $granted")
     }
     // Handle the result from GamePlay
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
