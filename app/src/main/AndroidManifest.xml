@@ -27,7 +27,12 @@
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-1499424387840063~4550971139" />
-
+        <meta-data
+            android:name="com.google.android.gms.ads.AD_MANAGER_APP"
+            android:value="true"/>
+        <meta-data
+            android:name="com.google.android.gms.ads.INTEGRATED_SDK_GDPR_CONSENT"
+            android:value="1"/>
         <activity
             android:name=".GamePlay"
             android:exported="false"

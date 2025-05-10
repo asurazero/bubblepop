@@ -13,6 +13,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.View
+import android.widget.Button
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -21,6 +22,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.android.gms.ads.MobileAds
+import com.google.android.ump.ConsentDebugSettings
+import com.google.android.ump.ConsentInformation
+import com.google.android.ump.ConsentRequestParameters
+import com.google.android.ump.UserMessagingPlatform
 import com.google.firebase.FirebaseApp
 import java.io.Serializable
 
@@ -29,6 +34,7 @@ import java.io.Serializable
 class MainActivity : AppCompatActivity(), ScoreListener {
     // GameModeStates object to hold game mode states
     object GameModeStates {
+        var debugMode = false
         var isChaosModeActive = false
         var isSplitModeActive = false
         var gameDifficulty = "Normal"
@@ -48,7 +54,9 @@ class MainActivity : AppCompatActivity(), ScoreListener {
             return availableMutators
         }
     }
-
+    private lateinit var umpConsentButton: ImageView
+    private lateinit var consentInformation: ConsentInformation
+    private lateinit var umpImage: ImageView
     private lateinit var levelTextView: TextView
     private lateinit var xpProgressBar: ProgressBar
     private lateinit var nextUnlockTextView: TextView
@@ -85,6 +93,9 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         enableEdgeToEdge()
         setContentView(R.layout.activity_main)
 
+        umpImage = findViewById(R.id.umpimage)
+        umpConsentButton = findViewById(R.id.umpconsentbutton)// Assuming it's a Button in XML
+        consentInformation = UserMessagingPlatform.getConsentInformation(this)
         // Initialize UI elements
         levelTextView = findViewById(R.id.levelTextView)
         xpProgressBar = findViewById(R.id.xpProgressBar)
@@ -100,15 +111,59 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         val settingsButton = findViewById<ImageView>(R.id.settingsbutton)
         val scoreDisplayText = findViewById<TextView>(R.id.textViewscoredisp)
         val startButton = findViewById<ImageView>(R.id.startbutton)
+        // For testing purposes, you can enable debug settings to force a consent dialog
+        val debugSettings = ConsentDebugSettings.Builder(this)
+           // .setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_REGULATED_US_STATE) // Ensure this is correct
+           // .addTestDeviceHashedId("YOUR_TEST_DEVICE_ID") // Uncomment and replace with your test device ID if needed
+           // .build()
+
+        val params = ConsentRequestParameters.Builder()
+           // .setConsentDebugSettings(debugSettings)
+            .build()
+
+        consentInformation.requestConsentInfoUpdate(
+            this,
+            params,
+            { // Consent Info Update Succeeded
+                Log.d("UMP", "Consent info update successful. Consent Status: ${consentInformation.consentStatus}")
+                Log.d("UMP", "Before loadAndShowConsentFormIfRequired()")
+                UserMessagingPlatform.loadAndShowConsentFormIfRequired(this) { loadAndShowError ->
+                    if (loadAndShowError != null) {
+                        Log.w("UMP", "Consent form load/show failed: ${loadAndShowError.message}, code: ${loadAndShowError.errorCode}")
+                    } else {
+                        Log.d("UMP", "Consent form loaded and shown (if required).")
+                    }
+
+                    if (consentInformation.canRequestAds()) {
+                        MobileAds.initialize(this) {}
+                        FirebaseApp.initializeApp(this)
+                        umpConsentButton.visibility = View.GONE
+                        umpImage.visibility = View.GONE
+                    } else {
+                        umpConsentButton.visibility = View.VISIBLE
+                        umpImage.visibility = View.VISIBLE
+                    }
+                }
+                Log.d("UMP", "After loadAndShowConsentFormIfRequired()")
+            },
+            { requestConsentError -> // Consent Info Update Failed
+                Log.w("UMP", "Consent info update failed: ${requestConsentError.message}, code: ${requestConsentError.errorCode}")
+                umpConsentButton.visibility = View.VISIBLE // Show button even if update fails for manual retry
+                umpImage.visibility = View.VISIBLE
+            })
+
 
         // Intent for starting the GamePlay activity.
         val intent = Intent(this, GamePlay::class.java)
         // Pass the activity as ScoreListener
         // Debug button to reset progress
         val resetProgressButton = findViewById<android.widget.Button>(R.id.resetProgressButton)
-        resetProgressButton.setOnClickListener {
-            resetGameProgress()
-        }
+        if (GameModeStates.debugMode) {
+
+            resetProgressButton.setOnClickListener {
+                resetGameProgress()
+            }
+        }else resetProgressButton.visibility = View.GONE
 
         // SoundPool for playing sound effects
         val audioAttributes = AudioAttributes.Builder()
@@ -131,7 +186,17 @@ class MainActivity : AppCompatActivity(), ScoreListener {
                 // Optionally, show a message to the user that the game is loading.
             }
         }
-
+        umpConsentButton.setOnClickListener {
+            UserMessagingPlatform.showPrivacyOptionsForm(this) { formError ->
+                if (formError != null) {
+                    println("UMP form available but form error")
+                    Log.w(
+                        "UMP",
+                        String.format("%s: %s", formError.message, formError.errorCode)
+                    )
+                }
+            }
+        }
         //show high score
         scoresButton.setOnClickListener {
             if (dataLoaded) {
@@ -156,9 +221,9 @@ class MainActivity : AppCompatActivity(), ScoreListener {
             }
         }
 
-        // Initialize Mobile Ads and Firebase.
-        MobileAds.initialize(this) {}
-        FirebaseApp.initializeApp(this)
+        // Initial visibility of the UMP elements
+        umpConsentButton.visibility = View.GONE
+        umpImage.visibility = View.GONE
 
         // Set up window insets to handle screen edges.
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
@@ -167,7 +232,6 @@ class MainActivity : AppCompatActivity(), ScoreListener {
             insets
         }
     }
-
     // Handle the result from GamePlay
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -474,7 +538,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
             val mutatorName = levelUpThresholds[nextUnlockLevel]
             nextUnlockTextView.text = "Next Unlock: Level $nextUnlockLevel - $mutatorName"
         } else {
-            nextUnlockTextView.text = "All mutators unlocked!"
+            nextUnlockTextView.text = "All mutators unlocked \nUntil Next Update!"
         }
         val availableMutators = GameModeStates.getAvailableMutators(currentLevel, levelUpThresholds)
         Log.d("MainActivity", "updateLevelUI - Current Level: $currentLevel, Available Mutators: $availableMutators")
