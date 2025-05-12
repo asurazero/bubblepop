@@ -43,6 +43,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         var debugMode = false
         var isChaosModeActive = false
         var isSplitModeActive = false
+        var isPowerUpModeActive = false
         var gameDifficulty = "Normal"
         var  unlockedMutators = mutableSetOf<String>("No Mutator")
         var unlockedForTesting = mutableSetOf("No Mutator", "Split", "Chaos")
@@ -83,10 +84,11 @@ class MainActivity : AppCompatActivity(), ScoreListener {
             field = value
             previousLevel = value //update previous level
         }
-    private val xpPerScore = 10f
+    private val xpPerScore = 5f
     private val levelUpThresholds = mapOf(
         2 to "Split",
-        5 to "Chaos"
+        5 to "Chaos",
+        7 to "PowerUp"
     )
     private val handler = Handler(Looper.getMainLooper())
     private var isLevelUpInProgress = false //track level up

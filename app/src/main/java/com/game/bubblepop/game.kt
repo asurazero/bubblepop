@@ -11,6 +11,7 @@ import android.media.SoundPool
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.game.bubblepop.MainActivity.GameModeStates
 
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
@@ -34,16 +35,18 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
         var playerXP: Int=0
         var globalScore: Int=0
     }
-
-    init {
-        this.context = context // Store the context
-        initializeAdUnitId()  // Initialize ad unit ID
-        loadInterstitialAd()    // Load the ad
-        // ... rest of your Game class initialization ...
+    private var adUnitId: String = ""
+    fun initializeAdUnitId() {
+        //ADUNIT
+        adUnitId = context.getString(R.string.inter_test) // 2nd Initialization
+        println(adUnitId.toString())
     }
 
-    fun initializeAdUnitId() {
-        adUnitId = context.getString(R.string.inter_test)
+    init {
+        this.context = context
+        initializeAdUnitId()  // Initialize adUnitId here
+        loadInterstitialAd()
+        // ...
     }
     fun isGameActive(): Boolean {
         return gameActive
@@ -112,7 +115,8 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
         }
 
     private var interstitialAd: InterstitialAd? = null
-    private var adUnitId = context.getString(R.string.inter_test)// Replace with your actual AdMob Interstitial Ad Unit ID
+    //ADUNIT
+
     private var levelsSinceAd = 0
     private val maxAllowedBubbleRadius = 250f // Define your maximum allowed radius
     private val maxSpawnInterval: Long = 4
@@ -207,6 +211,11 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
     }
 
     private fun loadInterstitialAd() {
+        Log.d("AdFlow", "loadInterstitialAd() called. Ad Unit ID: $adUnitId") // Log the ID here
+        if (adUnitId.isEmpty()) {
+            Log.e("AdFlow", "Ad unit ID is not initialized!")
+            return
+        }
         Log.d("AdFlow", "loadInterstitialAd() called.")
         if (adUnitId.isEmpty()) {
             Log.e("AdFlow", "Ad unit ID is not initialized!")
@@ -216,6 +225,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
         InterstitialAd.load(context, adUnitId, adRequest, object : InterstitialAdLoadCallback() {
             override fun onAdFailedToLoad(adError: LoadAdError) {
                 interstitialAd = null
+                println(adUnitId)
                 Log.e(
                     "AdFlow",
                     "onAdFailedToLoad() called. Error: ${adError.message}, code: ${adError.code}, domain: ${adError.domain}"
@@ -302,6 +312,11 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
     private val fallingBubbleProbability = 1f //make this 1 so all bubbles fall
 
     fun addRandomBubble() {
+        // entry for more power ups mutator
+        if (GameModeStates.isPowerUpModeActive == true) {
+            powerUpSpawnProbability = 0.4f
+
+        }
         val initialRadius = Random.nextFloat() * (minBubbleRadius * 0.5f) + (minBubbleRadius * 0.25f)
         val startRadius = initialRadius
         val x = Random.nextFloat() * (screenWidth - 2 * startRadius) + startRadius
@@ -412,6 +427,9 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 if (MainActivity.GameModeStates.gameDifficulty == "Hard") {
                     //TODO reset after testing
                     rectangleRiseSpeed = 1.0f //0.2 for regular
+                }
+                if (GameModeStates.isPowerUpModeActive == true){
+                    rectangleRiseSpeed =  1.0f + (level * 0.02f)
                 }
                 //set normal at 0.1f //4.0 or 2.5 for game over tests
                 redrawListener?.onRedrawRequested()
@@ -583,7 +601,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 missedBubbles--
                 // missedBubbleChangeListener?.onMissedBubbleCountChanged(missedBubbles) // Fixme: removed listener
                 Log.d("Game", "Clicked -1 bubble! Missed count reduced to $missedBubbles")
-                // soundPool.play(coinRingSoundId, 1f, 1f, 0, 0, 1f) // Play coin ring sound  Fixme: removed soundpool
+                soundPool.play(coinRingSoundId, 1f, 1f, 0, 0, 1f) // Play coin ring sound  Fixme: removed soundpool
                 rectangleY += negativeBubbleDescentAmount // Move the rectangle down
             } else {
                 Log.d("Game", "Clicked -1 bubble! Missed count already at 0.")
@@ -801,7 +819,9 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
         if (level % adFrequency == 0 && levelsSinceAd >= adFrequency && interstitialAd != null) {
             Log.d("AdFlow", "Attempting to show interstitial ad at level $level (frequency: $adFrequency).")
             gameActive = false
-            showInterstitialAd(context)
+            mainThreadHandler.post {
+                showInterstitialAd(context)
+            }
             levelsSinceAd = 0
         } else {
             Log.d("AdFlow", "Interstitial ad conditions not met at level $level (frequency: $adFrequency). Ad ready: ${interstitialAd != null}")
@@ -966,15 +986,13 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                     bubbles.removeAll(normalBubblesToRemove)
                     if (removedCount > 0) {
                         score += removedCount * level
-                        //removed play short seg()
                         soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
-                        //Removed levelUp() call
+                        // Level up is checked after all bubbles are processed
                     } else {
                         Log.d("Game", "No normal bubbles to pop.")
                     }
                 } catch (e: Exception) {
                     Log.e("Game", "Error removing normal bubbles: ${e.message}")
-                    // Handle the error, perhaps by creating a new list and assigning it to bubbles
                     val remainingBubbles = bubbles.toMutableList()
                     remainingBubbles.removeAll(normalBubblesToRemove)
                     bubbles = remainingBubbles
@@ -1015,12 +1033,13 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             isBombActive = false
             isBombStopped = false // Ensure bomb stopped is also reset
             redrawListener?.onRedrawRequested()
-            if (bubbles.isEmpty()) {
+
+            // Check for level up after all bubbles have been processed
+            if (bubbles.isEmpty() && gameActive) {
                 levelUp()
             }
         }
     }
-
     fun isPointInsideBomb(x: Float, y: Float): Boolean {
         return if (isBombActive) {
             val distanceSquared = (x - bombX).pow(2) + (y - bombY).pow(2)

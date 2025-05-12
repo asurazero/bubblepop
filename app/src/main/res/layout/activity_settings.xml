@@ -11,18 +11,21 @@
         android:id="@+id/legalScrollView"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:background="@color/white"
         android:clickable="true"
         android:focusable="true"
         android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@+id/constraintLayout69"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.5"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toTopOf="parent"
+        tools:visibility="gone">
 
         <TextView
             android:id="@+id/legalTextView"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:padding="16dp"
             android:text="test text"
             android:textColor="@color/black"
@@ -33,12 +36,13 @@
         android:id="@+id/constraintLayout69"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="261dp"
-        android:layout_marginBottom="581dp"
+        android:visibility="visible"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.5"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toBottomOf="@+id/legalScrollView"
+        tools:visibility="visible">
 
         <ImageView
             android:id="@+id/dismissbutton"
@@ -49,10 +53,9 @@
             android:visibility="gone"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintHorizontal_bias="0.5"
+            app:layout_constraintHorizontal_bias="1.0"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.5"
             app:srcCompat="@drawable/bubble"
             tools:visibility="gone" />
 
@@ -82,10 +85,12 @@
         android:layout_marginTop="445dp"
         android:layout_marginEnd="33dp"
         android:layout_marginBottom="136dp"
+        android:visibility="visible"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toTopOf="parent"
+        tools:visibility="visible">
 
         <ImageView
             android:id="@+id/legalbutton"
@@ -121,11 +126,13 @@
         android:id="@+id/constraintLayout5"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:visibility="visible"
         app:layout_constraintBottom_toTopOf="@+id/constraintLayout3"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.5"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toTopOf="parent"
+        tools:visibility="visible">
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/constraintLayout23"
@@ -228,22 +235,26 @@
         android:id="@+id/constraintLayout3"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:visibility="visible"
         app:layout_constraintBottom_toTopOf="@+id/constraintLayout6"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.5"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/constraintLayout5">
+        app:layout_constraintTop_toBottomOf="@+id/constraintLayout5"
+        tools:visibility="visible">
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/constraintLayout4"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:visibility="visible"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.5"
             app:layout_constraintStart_toEndOf="@+id/difficultytext"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.5">
+            app:layout_constraintVertical_bias="0.5"
+            tools:visibility="visible">
 
             <ImageView
                 android:id="@+id/difficultyright"
@@ -251,18 +262,21 @@
                 android:layout_height="100dp"
                 android:clickable="true"
                 android:focusable="true"
+                android:visibility="visible"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintHorizontal_bias="0.5"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintVertical_bias="0.5"
-                app:srcCompat="@drawable/bubble" />
+                app:srcCompat="@drawable/bubble"
+                tools:visibility="visible" />
 
             <ImageView
                 android:id="@+id/imageView3"
                 android:layout_width="60dp"
                 android:layout_height="60dp"
+                android:visibility="visible"
                 app:layout_constraintBottom_toTopOf="@+id/difficultyright"
                 app:layout_constraintEnd_toStartOf="@+id/difficultyright"
                 app:layout_constraintHorizontal_bias="0.5"
@@ -270,7 +284,8 @@
                 app:layout_constraintTop_toBottomOf="@+id/difficultyright"
                 app:layout_constraintVertical_bias="0.5"
                 app:srcCompat="@android:drawable/ic_media_ff"
-                app:tint="#D3000000" />
+                app:tint="#D3000000"
+                tools:visibility="visible" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -278,12 +293,14 @@
             android:id="@+id/constraintLayout11"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:visibility="visible"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toStartOf="@+id/difficultytext"
             app:layout_constraintHorizontal_bias="0.5"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.5">
+            app:layout_constraintVertical_bias="0.5"
+            tools:visibility="visible">
 
             <ImageView
                 android:id="@+id/difficultyleft"
@@ -339,10 +356,12 @@
         android:layout_marginTop="492dp"
         android:layout_marginEnd="224dp"
         android:layout_marginBottom="89dp"
+        android:visibility="visible"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toTopOf="parent"
+        tools:visibility="visible">
 
         <ImageView
             android:id="@+id/creditsbutton"
