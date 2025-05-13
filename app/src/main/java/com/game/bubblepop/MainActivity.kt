@@ -1,5 +1,5 @@
 package com.game.bubblepop
-
+import com.google.android.gms.ads.FullScreenContentCallback
 import android.animation.Animator
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
@@ -21,7 +21,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.google.android.gms.ads.AdError
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.interstitial.InterstitialAd
+import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 import com.google.android.ump.ConsentDebugSettings
 import com.google.android.ump.ConsentInformation
 import com.google.android.ump.ConsentRequestParameters
@@ -36,7 +41,6 @@ import com.google.firebase.analytics.setConsent
 import java.io.Serializable
 
 //  ScoreListener is in interfaces.kt
-
 class MainActivity : AppCompatActivity(), ScoreListener {
     // GameModeStates object to hold game mode states
     object GameModeStates {
@@ -45,22 +49,31 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         var isSplitModeActive = false
         var isPowerUpModeActive = false
         var gameDifficulty = "Normal"
-        var  unlockedMutators = mutableSetOf<String>("No Mutator")
+        var unlockedMutators = mutableSetOf<String>("No Mutator")
         var unlockedForTesting = mutableSetOf("No Mutator", "Split", "Chaos")
-
+        var gameover = false
+        var timeToShowAd=true
         // Function to get available mutators based on level
         fun getAvailableMutators(level: Int, levelUpThresholds: Map<Int, String>): Set<String> {
             val availableMutators = mutableSetOf("No Mutator") // Always include "No Mutator"
             for ((unlockLevel, mutatorName) in levelUpThresholds) {
                 if (level >= unlockLevel) {
                     availableMutators.add(mutatorName)
-                    unlockedMutators=availableMutators
-
+                    unlockedMutators = availableMutators
                 }
             }
             return availableMutators
         }
     }
+
+    //AD handling
+    private var mInterstitialAd: InterstitialAd? = null
+    private val adUnitId = R.string.inter_test
+    private var gameStarted = false
+    private var adLoaded = false //track ad loaded state
+    private var adShownAtStart = false
+    private var adShowAttempted = false
+
     private lateinit var umpConsentButton: ImageView
     private lateinit var consentInformation: ConsentInformation
     private lateinit var umpImage: ImageView
@@ -99,6 +112,9 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_main)
+        totalXP = intent.getIntExtra("XP_EXTRA", 0)
+        currentLevel = intent.getIntExtra("LEVEL_EXTRA", 1)
+
 
         umpImage = findViewById(R.id.umpimage)
         umpConsentButton = findViewById(R.id.umpconsentbutton)// Assuming it's a Button in XML
@@ -110,7 +126,9 @@ class MainActivity : AppCompatActivity(), ScoreListener {
 
         // Initialize shared preferences
         sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        loadGameProgress() // Load game progress  -  Moved to its own call
+
+        // We expect dataLoaded to be true when MainActivity starts
+        dataLoaded = true
 
         // Initialize and set up UI elements
         val scoresButton = findViewById<ImageView>(R.id.scoresbutton)
@@ -121,7 +139,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         // For testing purposes, you can enable debug settings to force a consent dialog
         val debugSettings = ConsentDebugSettings.Builder(this)
         // .setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_REGULATED_US_STATE) // Ensure this is correct
-        // .addTestDeviceHashedId("YOUR_TEST_DEVICE_ID") // Uncomment and replace with your test device ID if needed
+         //.addTestDeviceHashedId("B3EEABB8EE11C2BE770B684D95219ECB") // Uncomment and replace with your test device ID if needed
         // .build()
 
         val params = ConsentRequestParameters.Builder()
@@ -145,7 +163,8 @@ class MainActivity : AppCompatActivity(), ScoreListener {
                         MobileAds.initialize(this) {}
                         FirebaseApp.initializeApp(this)
                         umpConsentButton.visibility = View.GONE
-                        umpImage.visibility = View.GONE
+                        umpImage.visibility = View.GONE;
+                        loadInterstitialAd() // Load the first interstitial ad here
                     } else {
                         umpConsentButton.visibility = View.VISIBLE
                         umpImage.visibility = View.VISIBLE
@@ -186,12 +205,22 @@ class MainActivity : AppCompatActivity(), ScoreListener {
 
         // Set click listener for the start button to begin the game.
         startButton.setOnClickListener {
-            if (dataLoaded) { // Only start if data is loaded
-                soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f) // Play sound effect
-                startActivityForResult(intent, 123) // Start GamePlay and expect a result
+            if (dataLoaded && !gameStarted) {
+                soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f)
+                startGame()
+
+                Log.d("AdMobFlow", "Start Button Clicked: mInterstitialAd=${if (mInterstitialAd != null) "not null" else "null"}")
+                if (mInterstitialAd != null) {
+                    Log.d("AdMobFlow", "Showing interstitial ad at start (mInterstitialAd check).")
+                    showInterstitialAd()
+                    adShownAtStart = true
+
+                } else {
+                    Log.d("AdMobFlow", "Ad not ready, starting GamePlay directly.")
+                    startGamePlay(Intent(this, GamePlay::class.java))
+                }
             } else {
-                Log.w("MainActivity", "Start button clicked before data loaded")
-                // Optionally, show a message to the user that the game is loading.
+                Log.w("MainActivity", "Start button clicked before data loaded or during a game.")
             }
         }
         umpConsentButton.setOnClickListener {
@@ -239,6 +268,21 @@ class MainActivity : AppCompatActivity(), ScoreListener {
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
+
+        // Initial UI update after onCreate
+        updateLevelUI()
+    }
+    private fun startGamePlay() {
+        adShowAttempted = false // Reset the flag for a new game attempt
+        val intent = Intent(this, GamePlay::class.java)
+        gameStarted = true // Set gameStarted to true when a new game begins
+
+        if (adLoaded && !adShowAttempted) {
+            showInterstitialAd()
+        } else {
+            Log.d("MainActivity", "Ad not loaded or already attempted at game start.")
+            startActivityForResult(intent, 123) // Start GamePlay even if ad isn't ready
+        }
     }
     private fun updateFirebaseAnalyticsConsent(granted: Boolean = consentInformation.canRequestAds()) {
         val consentMap = mutableMapOf<ConsentType, ConsentStatus>().apply {
@@ -251,20 +295,47 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         Firebase.analytics.setConsent(consentMap)
         Log.d("UMP", "Firebase Analytics consent updated. Granted: $granted")
     }
+
+    private fun startGame() {
+        gameStarted = true
+        GameModeStates.gameover = false
+        adShowAttempted = false
+        adLoaded = false
+        // Delay the ad load slightly to prioritize a potentially already loaded ad
+        handler.postDelayed({
+            loadInterstitialAd()
+        }, 500) // 500ms delay
+    }
+
+    private fun startGamePlay(intent: Intent){
+        startActivityForResult(intent, 123)
+    }
+
     // Handle the result from GamePlay
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 123) { // Make sure the request code matches
+        if (requestCode == 123) {
             if (resultCode == RESULT_OK) {
+                Log.d("MainActivity", "Game Over: Ad Loaded: $adLoaded, Shown At Start: $adShownAtStart")
                 val finalScore = data?.getIntExtra("finalScore", 0) ?: 0
-                Log.d("MainActivity", "Received final score: $finalScore")
-                onScoreEarned(finalScore) // Award XP based on the received score
+                onScoreEarned(finalScore)
+                GameModeStates.gameover = true
+                GameModeStates.timeToShowAd = true
+
+                if (adLoaded && GameModeStates.gameover && !adShownAtStart && mInterstitialAd != null) {
+                    Log.d("AdMobFlow", "Showing interstitial ad at game over.")
+                    showInterstitialAd()
+                } else if (GameModeStates.gameover) {
+                    Log.d("MainActivity", "No ad to show at game over.")
+                    gameStarted = false
+                }
             } else {
-                Log.d("MainActivity", "GamePlay finished without a result or with an error.")
+                Log.d("MainActivity", "GamePlay finished without a result.")
+                GameModeStates.gameover = true
+                gameStarted = false
             }
         }
     }
-
     // Implementation of the onScoreEarned method from the ScoreListener interface.
     override fun onScoreEarned(score: Int) {
         Log.d("MainActivity", "onScoreEarned called with score: $score")
@@ -272,6 +343,75 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         updateHighScore(score) // Moved highScore update here
     }
 
+    //AD functions
+    private fun setInterstitialAdFullScreenContentCallback() {
+        mInterstitialAd?.fullScreenContentCallback = object : FullScreenContentCallback() {
+            override fun onAdDismissedFullScreenContent() {
+                Log.d("AdMob", "Interstitial ad was dismissed.")
+                loadInterstitialAd() // Load the next ad
+                adLoaded = false
+                adShowAttempted = true // Ad was shown
+                adShownAtStart = false // Reset this flag as the start of the game is over
+                gameStarted = false // Allow starting a new game
+            }
+
+            override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                Log.e("AdMob", "Interstitial ad failed to show: ${adError.message}")
+                mInterstitialAd = null
+                adLoaded = false
+                adShowAttempted = true // Attempt was made
+                adShownAtStart = false // Reset this flag
+                loadInterstitialAd() // Try to load another ad
+                gameStarted = false
+            }
+
+            override fun onAdShowedFullScreenContent() {
+                Log.d("AdMob", "Interstitial ad was shown.")
+                mInterstitialAd = null // Ad shown, so nullify it immediately
+                adLoaded = false
+                adShowAttempted = true
+            }
+        }
+    }
+
+    private fun loadInterstitialAd() {
+        println("Ran Ad Load")
+        if (isLoadingAd) {
+            return
+        }
+        isLoadingAd = true
+        val adRequest = AdRequest.Builder().build()
+
+        InterstitialAd.load(this, getString(adUnitId), adRequest, object : InterstitialAdLoadCallback() {
+            override fun onAdFailedToLoad(adError: LoadAdError) {
+                Log.d("AdMob", "Failed to load interstitial ad: ${adError.message}")
+                mInterstitialAd = null
+                adLoaded = false
+                isLoadingAd = false
+            }
+
+            override fun onAdLoaded(interstitialAd: InterstitialAd) {
+                Log.d("AdMob", "Interstitial ad loaded.")
+                mInterstitialAd = interstitialAd
+                setInterstitialAdFullScreenContentCallback()
+                adLoaded = true // Set adLoaded to true when the ad is successfully loaded
+                isLoadingAd = false
+            }
+        })
+    }
+
+    private var isLoadingAd = false // Track if an ad is currently loading
+
+    private fun showInterstitialAd() {
+        if (mInterstitialAd != null&& GameModeStates.timeToShowAd) {
+            Log.d("AdMob", "Attempting to show interstitial ad.")
+            mInterstitialAd?.show(this)
+            GameModeStates.timeToShowAd = false
+        } else {
+            Log.d("AdMob", "Interstitial ad was not ready to show.")
+            startGamePlay(Intent(this, GamePlay::class.java))
+        }
+    }
     // Method to award XP to the player.
     private fun awardXP(score: Int) {
         Log.d("MainActivity", "awardXP called with score: $score")
@@ -516,11 +656,16 @@ class MainActivity : AppCompatActivity(), ScoreListener {
     }
 
     //refresh
+    private var lastAdLoadAttemptTime: Long = 0
+    private val AD_LOAD_THRESHOLD = 60 * 1000L // 60 seconds
+
     override fun onResume() {
         super.onResume()
-        Log.d("MainActivity", "onResume called")
-        if (dataLoaded) {
-            updateLevelUI() //update level, but only if data is loaded.
+        if (!adLoaded && !adShowAttempted && mInterstitialAd == null && !isLoadingAd) {
+            Log.d("AdMob", "onResume: Attempting to load interstitial ad.")
+            loadInterstitialAd()
+        } else {
+            Log.d("AdMob", "onResume: Ad already loaded or load attempted recently.")
         }
     }
 
