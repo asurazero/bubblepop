@@ -68,7 +68,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
 
     //AD handling
     private var mInterstitialAd: InterstitialAd? = null
-    private val adUnitId = R.string.inter_test
+    private val adUnitId = R.string.interstitial_id
     private var gameStarted = false
     private var adLoaded = false //track ad loaded state
     private var adShownAtStart = false
@@ -97,7 +97,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
             field = value
             previousLevel = value //update previous level
         }
-    private val xpPerScore = 5f
+    private val xpPerScore = 3f
     private val levelUpThresholds = mapOf(
         2 to "Split",
         5 to "Chaos",
@@ -207,20 +207,12 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         startButton.setOnClickListener {
             if (dataLoaded && !gameStarted) {
                 soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f)
-                startGame()
-
-                Log.d("AdMobFlow", "Start Button Clicked: mInterstitialAd=${if (mInterstitialAd != null) "not null" else "null"}")
-                if (mInterstitialAd != null) {
-                    Log.d("AdMobFlow", "Showing interstitial ad at start (mInterstitialAd check).")
-                    showInterstitialAd()
-                    adShownAtStart = true
-
-                } else {
-                    Log.d("AdMobFlow", "Ad not ready, starting GamePlay directly.")
-                    startGamePlay(Intent(this, GamePlay::class.java))
+                var intent=Intent(this, GamePlay::class.java)
+                startGamePlay(intent)
+                if(!adLoaded){
+                    loadInterstitialAd()
                 }
-            } else {
-                Log.w("MainActivity", "Start button clicked before data loaded or during a game.")
+
             }
         }
         umpConsentButton.setOnClickListener {

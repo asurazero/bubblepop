@@ -303,22 +303,25 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 }
                 if (MainActivity.GameModeStates.gameDifficulty == "Normal") {
                     rectangleRiseSpeed = 0.1f + (level * 0.02f)
+                    val maxRectangleRiseSpeed = 0.3f
                     if (rectangleRiseSpeed > maxRectangleRiseSpeed) {
                         rectangleRiseSpeed = maxRectangleRiseSpeed
                     }
                 }
                 if (MainActivity.GameModeStates.gameDifficulty == "Hard") {
                     rectangleRiseSpeed = 0.3f + (level * 0.02f)
+                    val maxRectangleRiseSpeed = 0.4f
                     if (rectangleRiseSpeed > maxRectangleRiseSpeed) {
                         rectangleRiseSpeed = maxRectangleRiseSpeed
                     }
                 }
                 if (GameModeStates.isPowerUpModeActive == true){
                     val maxRectangleRiseSpeed = 1.5f
+                    rectangleRiseSpeed =  1.0f + (level * 0.02f)
                     if (rectangleRiseSpeed > maxRectangleRiseSpeed) {
                         rectangleRiseSpeed = maxRectangleRiseSpeed
                     }
-                    rectangleRiseSpeed =  1.0f + (level * 0.02f)
+
                 }
                 //set normal at 0.1f //4.0 or 2.5 for game over tests
                 redrawListener?.onRedrawRequested()
@@ -657,6 +660,9 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                 isGreenRectangleActive = true
                 isCyanRectangleActive = false
                 greenRectangleEndTime = System.currentTimeMillis() + greenRectangleDuration
+                if(MainActivity.GameModeStates.isPowerUpModeActive){
+                    greenRectangleEndTime=2000
+                }
                 Log.d("Game", "Green Rectangle activated!  endTime: $greenRectangleEndTime")
                 // Show "Green Rectangle" text
                 redrawListener?.onRedrawRequested()
