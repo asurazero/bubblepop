@@ -44,7 +44,7 @@ import java.io.Serializable
 class MainActivity : AppCompatActivity(), ScoreListener {
     // GameModeStates object to hold game mode states
     object GameModeStates {
-        var debugMode = false
+        var debugMode = true
         var isChaosModeActive = false
         var isSplitModeActive = false
         var isPowerUpModeActive = false
@@ -68,7 +68,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
 
     //AD handling
     private var mInterstitialAd: InterstitialAd? = null
-    private val adUnitId = R.string.interstitial_id
+    private val adUnitId = R.string.inter_test
     private var gameStarted = false
     private var adLoaded = false //track ad loaded state
     private var adShownAtStart = false
@@ -97,7 +97,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
             field = value
             previousLevel = value //update previous level
         }
-    private val xpPerScore = 3f
+    private val xpPerScore = 1f
     private val levelUpThresholds = mapOf(
         2 to "Split",
         5 to "Chaos",
@@ -208,6 +208,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
             if (dataLoaded && !gameStarted) {
                 soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f)
                 var intent=Intent(this, GamePlay::class.java)
+
                 startGamePlay(intent)
                 if(!adLoaded){
                     loadInterstitialAd()

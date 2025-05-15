@@ -34,7 +34,7 @@ class SplashActivity : AppCompatActivity() {
             Log.d("SplashActivity", "Loaded XP: $totalXP, Level: $currentLevel")
 
             // Simulate a longer loading process if needed
-            Thread.sleep(1500)
+            Thread.sleep(10000)
 
             dataLoaded = true;
             // Switch back to the main thread to navigate
