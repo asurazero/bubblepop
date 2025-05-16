@@ -44,7 +44,7 @@ import java.io.Serializable
 class MainActivity : AppCompatActivity(), ScoreListener {
     // GameModeStates object to hold game mode states
     object GameModeStates {
-        var debugMode = true
+        var debugMode = false
         var isChaosModeActive = false
         var isSplitModeActive = false
         var isPowerUpModeActive = false
@@ -68,7 +68,6 @@ class MainActivity : AppCompatActivity(), ScoreListener {
 
     //AD handling
     private var mInterstitialAd: InterstitialAd? = null
-    private val adUnitId = R.string.inter_test
     private var gameStarted = false
     private var adLoaded = false //track ad loaded state
     private var adShownAtStart = false
@@ -137,14 +136,19 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         val scoreDisplayText = findViewById<TextView>(R.id.textViewscoredisp)
         val startButton = findViewById<ImageView>(R.id.startbutton)
         // For testing purposes, you can enable debug settings to force a consent dialog
+        if (GameModeStates.debugMode) {
         val debugSettings = ConsentDebugSettings.Builder(this)
-        // .setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_REGULATED_US_STATE) // Ensure this is correct
-         //.addTestDeviceHashedId("B3EEABB8EE11C2BE770B684D95219ECB") // Uncomment and replace with your test device ID if needed
-        // .build()
+        .setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_DISABLED) // Ensure this is correct
+         .addTestDeviceHashedId("B3EEABB8EE11C2BE770B684D95219ECB") // Uncomment and replace with your test device ID if needed
+            .build()
+            val params = ConsentRequestParameters.Builder()
+                .setConsentDebugSettings(debugSettings)
+                .build()
+        }
 
         val params = ConsentRequestParameters.Builder()
-            // .setConsentDebugSettings(debugSettings)
             .build()
+
 
         consentInformation.requestConsentInfoUpdate(
             this,
@@ -210,6 +214,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
                 var intent=Intent(this, GamePlay::class.java)
 
                 startGamePlay(intent)
+                println("Ad Load State: $adLoaded")
                 if(!adLoaded){
                     loadInterstitialAd()
                 }
@@ -367,30 +372,68 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         }
     }
 
-    private fun loadInterstitialAd() {
-        println("Ran Ad Load")
-        if (isLoadingAd) {
+
+
+
+    fun loadInterstitialAd() {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastAdLoadAttemptTime < AD_LOAD_THRESHOLD) {
+            Log.d(
+                "AdMob",
+                "loadInterstitialAd: Ad load attempt skipped - threshold not reached."
+            )
             return
         }
+
         isLoadingAd = true
         val adRequest = AdRequest.Builder().build()
+        val adUnitId = getString(R.string.interstitial_id)
+        InterstitialAd.load(
+            this, // Assuming this code is within an Activity or Fragment
+            adUnitId.toString(),
+            adRequest,
+            object : InterstitialAdLoadCallback() {
 
-        InterstitialAd.load(this, getString(adUnitId), adRequest, object : InterstitialAdLoadCallback() {
-            override fun onAdFailedToLoad(adError: LoadAdError) {
-                Log.d("AdMob", "Failed to load interstitial ad: ${adError.message}")
-                mInterstitialAd = null
-                adLoaded = false
-                isLoadingAd = false
-            }
+                override fun onAdFailedToLoad(adError: LoadAdError) {
+                    Log.d("AdMob", "Ad failed to load: ${adError.message}")
+                    println("Adunit: $adUnitId")
+                    mInterstitialAd = null
+                    adLoaded = false
+                    isLoadingAd = false
+                    lastAdLoadAttemptTime = System.currentTimeMillis() // Update time even on failure
+                }
 
-            override fun onAdLoaded(interstitialAd: InterstitialAd) {
-                Log.d("AdMob", "Interstitial ad loaded.")
-                mInterstitialAd = interstitialAd
-                setInterstitialAdFullScreenContentCallback()
-                adLoaded = true // Set adLoaded to true when the ad is successfully loaded
-                isLoadingAd = false
+                override fun onAdLoaded(interstitialAd: InterstitialAd) {
+                    Log.d("AdMob", "Ad loaded.")
+                    mInterstitialAd = interstitialAd
+                    adLoaded = true
+                    isLoadingAd = false
+                    lastAdLoadAttemptTime = System.currentTimeMillis() // Update the last load time
+                    // You might want to set up AdListener here to track ad events
+                    interstitialAd.fullScreenContentCallback = object : com.google.android.gms.ads.FullScreenContentCallback() {
+                        override fun onAdDismissedFullScreenContent() {
+                            Log.d("AdMob", "Ad was dismissed.")
+                            mInterstitialAd = null
+                            adLoaded = false
+                            adShowAttempted = false
+                            // Optionally load the next ad here if needed
+                        }
+
+                        override fun onAdFailedToShowFullScreenContent(adError: com.google.android.gms.ads.AdError) {
+                            Log.e("AdMob", "Ad failed to show: ${adError.message}")
+                            mInterstitialAd = null
+                            adLoaded = false
+                            adShowAttempted = false
+                        }
+
+                        override fun onAdShowedFullScreenContent() {
+                            Log.d("AdMob", "Ad showed.")
+                            adShowAttempted = true
+                        }
+                    }
+                }
             }
-        })
+        )
     }
 
     private var isLoadingAd = false // Track if an ad is currently loading

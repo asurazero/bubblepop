@@ -13,8 +13,8 @@ android {
         applicationId = "com.game.bubblepop"
         minSdk = 24
         targetSdk = 35
-        versionCode = 21
-        versionName = "3.0"
+        versionCode = 23
+        versionName = "3.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -38,10 +38,9 @@ android {
 }
 
 dependencies {
-
     implementation("com.google.android.ump:user-messaging-platform:3.1.0")
-    implementation ("com.google.firebase:firebase-analytics:17.4.1")
     implementation(platform("com.google.firebase:firebase-bom:33.13.0"))
+    implementation("com.google.firebase:firebase-analytics-ktx") // Use the ktx version
     implementation (libs.play.services.ads.lite)
     implementation(libs.firebase.common.ktx)
     implementation(libs.androidx.core.ktx)
