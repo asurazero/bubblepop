@@ -4,6 +4,7 @@ package com.game.bubblepop
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.PointF
 import android.graphics.RectF
 import android.media.AudioAttributes
 import android.media.SoundPool
@@ -11,7 +12,6 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.game.bubblepop.MainActivity.GameModeStates
-import com.google.android.gms.ads.interstitial.InterstitialAd
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -20,7 +20,12 @@ import kotlin.math.sqrt
 import kotlin.random.Random
 
 
-class Game(private val screenWidth: Float, private val screenHeight: Float, private var context: Context) {
+class Game(
+    private val screenWidth: Float,
+    private val screenHeight: Float,
+    private var context: Context,
+    private val isOrbitModeActive: Boolean
+) {
     // Public getter for gameActive
     object appWideGameData{
         var playerXP: Int=0
@@ -93,8 +98,7 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
             val newInterval = if (baseSpawnInterval - decrease < 500L) 500L else baseSpawnInterval - decrease
             return newInterval
         }
-
-
+    private val centralOrbitPoint: PointF = PointF(screenWidth / 2f, screenHeight / 3f) // Adjusted Y for better visibility of orbit
 
     private var levelsSinceAd = 0
     private val maxAllowedBubbleRadius = 250f // Define your maximum allowed radius
@@ -173,34 +177,35 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
     }
 
 
-
-
-
-
-    // ... rest of your Game class ...
+// ... rest of your Game class ...
 
     private var powerUpSpawnProbability = 0.25f //was .05f
-    private val negativeBubbleSpawnProbability = 0.25f // 3% chance to spawn a negative bubble
-    private val negativeBubbleSpeed = 5f // Adjust falling speed
-    private val shrinkingSpeedMultiplier = 0.08f // Adjust to make shrinking slower
+    private val negativeBubbleSpawnProbability = 0.25f
+    private val negativeBubbleSpeed = 5f
+    private val shrinkingSpeedMultiplier = 0.08f
     // ... existing init and other methods ...
-    private val fallingBubbleProbability = 1f //make this 1 so all bubbles fall
+    private val fallingBubbleProbability = 1f
+
 
     fun addRandomBubble() {
         // entry for more power ups mutator
-        if (GameModeStates.isPowerUpModeActive == true) {
+        if (MainActivity.GameModeStates.isPowerUpModeActive == true) {
             powerUpSpawnProbability = 0.4f
-
         }
         val initialRadius = Random.nextFloat() * (minBubbleRadius * 0.5f) + (minBubbleRadius * 0.25f)
         val startRadius = initialRadius
+
+        // --- REVERTED CHANGE: Random X position ---
+        // Bubbles will spawn anywhere across the top of the screen
         val x = Random.nextFloat() * (screenWidth - 2 * startRadius) + startRadius
-        // All bubbles start at the top
+        // --- END REVERTED CHANGE ---
+
+        // All bubbles start at the top, just off-screen
         val y = -startRadius
 
         var chosenBubbleType: BubbleType
         val chosenPowerUpType: PowerUpType?
-        var setCanSplit = false // Add this variable
+        var setCanSplit = false
 
         if (Random.nextFloat() < powerUpSpawnProbability) {
             // It's a power-up bubble
@@ -219,25 +224,42 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
         Log.d("Game", "addRandomBubble: bubbleType = $chosenBubbleType, powerUpType = $chosenPowerUpType")
 
         val finalY = -startRadius // Ensure bubbles start at the top
+
         val isShrinking = Random.nextFloat() < shrinkingProbability
 
-        bubbles.add(
-            Bubble(
-                id = nextBubbleId++,
-                radius = startRadius,
-                initialRadius = initialBubbleRadius,
-                x = x,
-                y = finalY,
-                lifespan = Random.nextLong(9999, 99999),
-                powerUpType = chosenPowerUpType,
-                bubbleType = chosenBubbleType,
-                isShrinking = isShrinking,
-                canSplit = setCanSplit // Use the setCanSplit value here
-            )
+        // Decide if this specific bubble should be orbital based on the global mode
+        // and a random chance (e.g., 70% of bubbles become orbital if mode is active)
+        val shouldThisBubbleBeOrbital = isOrbitModeActive && Random.nextFloat() < 0.7f
+
+        val newBubble = Bubble(
+            id = nextBubbleId++,
+            radius = startRadius,
+            initialRadius = startRadius,
+            x = x, // Use the randomized X
+            y = finalY, // Use the finalY (top of screen)
+            lifespan = Random.nextLong(9999, 99999),
+            powerUpType = chosenPowerUpType,
+            bubbleType = chosenBubbleType,
+            isShrinking = isShrinking,
+            canSplit = setCanSplit,
+            isOrbitalBubble = shouldThisBubbleBeOrbital // Pass the flag
         )
+
+        // If the bubble is orbital, set its specific orbit parameters
+        if (shouldThisBubbleBeOrbital) {
+            // Adjust orbital radius and speed to your desired visual effect.
+            // These values worked for clear testing and can be fine-tuned.
+            val orbitalRadiusForThisBubble = 100f + Random.nextFloat() * 50f // e.g., 100 to 150 pixels radius
+            val orbitalSpeedForThisBubble = 1f + Random.nextFloat() * 5f // e.g., 5 to 10 degrees per update
+
+            newBubble.orbitalRadius = orbitalRadiusForThisBubble
+            newBubble.orbitalSpeed = orbitalSpeedForThisBubble
+            // The bubble's initialX and orbitalCenterY for its own orbit are automatically set
+            // in the Bubble constructor based on the 'x' and 'y' passed above.
+        }
+
+        bubbles.add(newBubble)
     }
-
-
 
     var isCyanRectangleActive = false
         private set
@@ -246,7 +268,6 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
     fun isGreenRectangleEffectActive(): Boolean {
         return isGreenRectangleActive
     }
-
 
 
     fun update() {
@@ -374,21 +395,27 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
                         bubblesToRemove.add(bubble)
                     }
 
-                    if (bubble.y < screenHeight) {
-                        bubble.y += negativeBubbleSpeed;
-                    }
-                    if (bubble.y >= screenHeight) {
-                        bubblesToRemove.add(bubble)
-                    }
+                    // Removed the simple y/x update here, as it's now handled by bubble.update() based on flags
+                    // if (bubble.y < screenHeight) { bubble.y += negativeBubbleSpeed; }
+                    // if (bubble.y >= screenHeight) { bubblesToRemove.add(bubble) }
+
                 } else if (bubble.bubbleType == BubbleType.NEGATIVE) {
+                    // Negative bubbles should still move down, but their 'update' call handles general movement too
                     bubble.y += negativeBubbleSpeed
                     if (bubble.y > screenHeight + bubble.radius) {
                         bubblesToRemove.add(bubble)
                     }
                 }
-                // Update bubble movement (including chaotic if enabled)
-                bubble.update(screenWidth.toInt(), screenHeight.toInt())
-                if (bubble.y >= screenHeight) {  //check here
+
+                // --- THE FIX IS HERE ---
+                // Update bubble movement (including chaotic and orbital if enabled)
+                // Pass the global chaos mode flag to the bubble's internal flag
+                bubble.isChaoticMovementEnabled = MainActivity.GameModeStates.isChaosModeActive
+                // Pass the screen dimensions AND the orbital motion toggle state
+                bubble.update(screenWidth.toInt(), screenHeight.toInt(), MainActivity.GameModeStates.isOrbitalModeActive)
+                // --- END FIX ---
+
+                if (bubble.y >= screenHeight) {  // Check if bubble went off screen after update
                     bubblesToRemove.add(bubble)
                 }
 
@@ -478,7 +505,6 @@ class Game(private val screenWidth: Float, private val screenHeight: Float, priv
 
         appWideGameData.globalScore=score
     }
-
 
 
     fun processClick(clickX: Float, clickY: Float, isSplitMode: Boolean) {

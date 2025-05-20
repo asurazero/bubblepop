@@ -13,6 +13,9 @@ import com.game.bubblepop.MainActivity.GameModeStates
 class GamePlay : AppCompatActivity(), Game.MissedBubbleChangeListener,
     Game.GameOverListener {
     var isSplitModeActive = false
+    // We'll also need a way to check if OrbitMode is active, likely from MainActivity.GameModeStates
+    var isOrbitModeActive = false // Add this property to mirror the global state
+
     private lateinit var gameView: GameView
     private lateinit var game: Game
     private lateinit var continueMessageTextView: TextView
@@ -28,6 +31,9 @@ class GamePlay : AppCompatActivity(), Game.MissedBubbleChangeListener,
         if (MainActivity.GameModeStates.isSplitModeActive) {
             isSplitModeActive = true
         }
+        // Get the initial OrbitModeActive state from MainActivity.GameModeStates
+        isOrbitModeActive = MainActivity.GameModeStates.isOrbitalModeActive
+
 
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -39,7 +45,9 @@ class GamePlay : AppCompatActivity(), Game.MissedBubbleChangeListener,
         endGameTextView = findViewById<TextView>(R.id.endGameTextView)
         val screenWidth = resources.displayMetrics.widthPixels.toFloat()
         val screenHeight = resources.displayMetrics.heightPixels.toFloat()
-        game = Game(screenWidth, screenHeight, this)
+
+        // Pass the orbit mode state to the Game constructor
+        game = Game(screenWidth, screenHeight, this, isOrbitModeActive)
         game.missedBubbleChangeListener = this
         game.gameOverListener = this
         gameView.game = game
@@ -67,6 +75,16 @@ class GamePlay : AppCompatActivity(), Game.MissedBubbleChangeListener,
                             return@setOnTouchListener true
                         } else if (!adShown) { //show ad only once
                             endGameOnAdDismiss = true
+                            // This is where you would typically show an ad
+                            // For now, let's just simulate ad dismissal after a short delay
+                            gameView.postDelayed({
+                                // Simulate ad dismissal actions
+                                if (endGameOnAdDismiss) {
+                                    isReadyToEnd = true
+                                    gameView.invalidate() // Trigger redraw to update touch logic
+                                    Log.d("GamePlay", "Simulated ad dismissed, isReadyToEnd set to true")
+                                }
+                            }, 1000) // 1 second delay
                             return@setOnTouchListener true
                         }
                     } else if (game.isGameActive()) {

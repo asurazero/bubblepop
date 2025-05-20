@@ -48,6 +48,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         var isChaosModeActive = false
         var isSplitModeActive = false
         var isPowerUpModeActive = false
+        var isOrbitalModeActive = false
         var gameDifficulty = "Normal"
         var unlockedMutators = mutableSetOf<String>("No Mutator")
         var unlockedForTesting = mutableSetOf("No Mutator", "Split", "Chaos")
@@ -100,7 +101,8 @@ class MainActivity : AppCompatActivity(), ScoreListener {
     private val levelUpThresholds = mapOf(
         2 to "Split",
         5 to "Chaos",
-        7 to "PowerUp"
+        8 to "PowerUp",
+        11 to "Orbit",
     )
     private val handler = Handler(Looper.getMainLooper())
     private var isLevelUpInProgress = false //track level up
@@ -697,6 +699,8 @@ class MainActivity : AppCompatActivity(), ScoreListener {
 
     override fun onResume() {
         super.onResume()
+        println("mutator state")
+        println(MainActivity.GameModeStates.isOrbitalModeActive)
         if (!adLoaded && !adShowAttempted && mInterstitialAd == null && !isLoadingAd) {
             Log.d("AdMob", "onResume: Attempting to load interstitial ad.")
             loadInterstitialAd()

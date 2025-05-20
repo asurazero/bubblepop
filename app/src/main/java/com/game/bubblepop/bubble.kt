@@ -18,8 +18,8 @@ class Bubble(
     val id: Int,
     var radius: Float,
     val initialRadius: Float,
-    var x: Float,
-    var y: Float,
+    var x: Float, // This will be the bubble's actual drawing position
+    var y: Float, // This will be the bubble's actual drawing position
     val creationTime: Long = System.currentTimeMillis(),
     val lifespan: Long,
     val powerUpType: PowerUpType? = null,
@@ -28,15 +28,24 @@ class Bubble(
     var popLifespanMultiplier: Float = 1f,
     var isShrinking: Boolean = false,
     var velocityX: Float = 0f,
-    var velocityY: Float = 0f,
+    var velocityY: Float = 0f, // The base falling speed for the orbit's center or normal movement
     var canSplit: Boolean = false,
-    var isChaoticMovementEnabled: Boolean = false, // New flag for chaotic movement
-    private val chaosFactor: Float = 3f // Adjust this value to control chaos intensity
+    var isChaoticMovementEnabled: Boolean = false,
+    private val chaosFactor: Float = 3f,
+    var initialX: Float = x, // The X-coordinate of the orbit's center (fixed horizontally for its "lane")
+    var orbitalCenterY: Float = y, // The Y-coordinate of the orbit's center (this will fall)
+    var orbitalAngle: Float = Random.nextFloat() * 360f,
+    var orbitalRadius: Float = 50f,
+    var orbitalSpeed: Float = 1f,
+    // Add the flag to control orbital motion within the Bubble instance
+    var isOrbitalBubble: Boolean = false // Default to false
 ) {
     init {
-        // Initialize velocity here. Make sure the bubbles go down initially
-        velocityY = Random.nextFloat() + 1f
-        velocityX = (Random.nextFloat() - 0.5f) * 2f // Less initial horizontal movement
+        // Initialize velocities for normal movement, or as base for orbitalCenterY fall
+        velocityY = Random.nextFloat() + 4f
+        velocityX = (Random.nextFloat() - 0.5f) * 2f
+
+    // orbitalCenterY is already initialized to the bubble's initial y (spawn y)
     }
 
     private val normalPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -64,9 +73,7 @@ class Bubble(
             BubbleType.NORMAL, BubbleType.POWER_UP -> {
                 if (isRed || isAboutToPop()) approachingPopPaint else normalPaint
             }
-
             BubbleType.NEGATIVE -> negativePaint
-            else -> normalPaint
         }
         canvas.drawCircle(x, y, radius, paintToUse)
         if (bubbleType == BubbleType.NORMAL) {
@@ -127,7 +134,7 @@ class Bubble(
     }
 
     companion object {
-        const val MAX_RADIUS = 200f // It's good practice to keep constants in the companion object
+        const val MAX_RADIUS = 200f
 
         fun createSplitBubbles(poppedBubble: Bubble): List<Bubble> {
             val newRadius = poppedBubble.radius / 1.5f
@@ -148,7 +155,9 @@ class Bubble(
                 lifespan = (poppedBubble.lifespan * 0.7f).toLong(),
                 velocityX = speed * cos(angle1),
                 velocityY = speed * sin(angle1),
-                bubbleType = BubbleType.NORMAL
+                bubbleType = BubbleType.NORMAL,
+                initialX = poppedBubble.x + (poppedBubble.radius / 2 + newRadius) * cos(angle1),
+                isOrbitalBubble = false // Split bubbles are not orbital by default
             )
             val bubble2 = Bubble(
                 id = -1,
@@ -159,53 +168,72 @@ class Bubble(
                 lifespan = (poppedBubble.lifespan * 0.7f).toLong(),
                 velocityX = speed * cos(angle2),
                 velocityY = speed * sin(angle2),
-                bubbleType = BubbleType.NORMAL
+                bubbleType = BubbleType.NORMAL,
+                initialX = poppedBubble.x + (poppedBubble.radius / 2 + newRadius) * cos(angle2),
+                isOrbitalBubble = false // Split bubbles are not orbital by default
             )
             return listOf(bubble1, bubble2)
         }
     }
 
-    fun update(screenWidth: Int, screenHeight: Int) {
-        if (MainActivity.GameModeStates.isChaosModeActive) {
-            velocityX += Random.nextFloat() * chaosFactor - chaosFactor / 2
-            velocityY += Random.nextFloat() * chaosFactor * 0.2f - chaosFactor * 0.1f // Slight vertical variation
+    fun update(screenWidth: Int, screenHeight: Int, isGameModeOrbitalActive: Boolean) { // Renamed for clarity
+        // Use the new isOrbitalBubble flag to control orbital motion for THIS bubble instance
+        if (isGameModeOrbitalActive && isOrbitalBubble && !isChaoticMovementEnabled) {
+            // --- Crucial Change for Perfect Orbit ---
+            // 1. Make the invisible orbit center fall
+            orbitalCenterY += velocityY
 
-            // Damping effect to prevent excessive speed
+            // 2. Update the orbital angle
+            orbitalAngle += orbitalSpeed
+            if (orbitalAngle > 360f) orbitalAngle -= 360f
+            else if (orbitalAngle < 0f) orbitalAngle += 360f
+
+            val angleInRadians = Math.toRadians(orbitalAngle.toDouble()).toFloat()
+
+            // 3. Calculate the bubble's ACTUAL position relative to the falling orbit center
+            val desiredX = initialX + orbitalRadius * cos(angleInRadians.toDouble()).toFloat()
+            val desiredY = orbitalCenterY + orbitalRadius * sin(angleInRadians.toDouble()).toFloat()
+
+            // 4. Set the bubble's (x, y) drawing position
+            x = desiredX.coerceIn(radius, screenWidth - radius) // Clamp X to screen bounds
+            y = desiredY // Y is set directly from orbital calculation
+
+            // 5. Handle Y-axis boundary for the bubble's actual position (y)
+            if (y - radius < 0) { // If the bubble itself hits the top of the screen
+                y = radius // Clamp the bubble to the top edge
+                velocityY *= -1f // Reverse the falling direction of the orbit's center
+
+                // Crucially, if the bubble bounces, the orbit's center (orbitalCenterY)
+                // must also be adjusted to maintain consistency.
+                // Re-calculate orbitalCenterY based on the new 'y' and the current orbital offset.
+                orbitalCenterY = y - orbitalRadius * sin(angleInRadians.toDouble()).toFloat()
+            }
+            // Note: Game.kt still handles removal if y > screenHeight (bubble falls off screen)
+
+        } else if (isChaoticMovementEnabled) {
+            // ... (Chaotic movement logic - remains the same)
+            velocityX += Random.nextFloat() * chaosFactor - chaosFactor / 2
+            velocityY += Random.nextFloat() * chaosFactor * 0.2f - chaosFactor * 0.1f
+
             velocityX *= 0.98f
             velocityY *= 0.98f
 
-            // Keep bubbles within horizontal bounds with damping on collision
-            if (x + radius > screenWidth) {
-                x = screenWidth - radius
-                velocityX *= -0.8f
-            } else if (x - radius < 0) {
-                x = radius
-                velocityX *= -0.8f
-            }
-
-            // Keep bubbles within vertical bounds with damping on collision
-            if (y + radius > screenHeight) {
-                y = screenHeight - radius
-                velocityY *= -0.8f
-            } else if (y - radius < 0) {
-                y = radius
-                velocityY *= -0.8f
-            }
-
             x += velocityX
             y += velocityY
+
+            if (x + radius > screenWidth) { x = screenWidth - radius; velocityX *= -0.8f } else if (x - radius < 0) { x = radius; velocityX *= -0.8f }
+            if (y + radius > screenHeight) { y = screenHeight - radius; velocityY *= -0.8f } else if (y - radius < 0) { y = radius; velocityY *= -0.8f }
 
         } else {
-            // Default downward movement with slight initial horizontal drift
-            y += velocityY
+            // Default movement: standard horizontal and vertical velocity, no mutators active
             x += velocityX
+            y += velocityY
 
-            if (x + radius > screenWidth || x - radius < 0) {
-                velocityX *= -1f
-            }
-            if (y + radius > screenHeight || y - radius < 0) {
-                velocityY *= -1f // Basic bounce off top/bottom if needed
-            }
+            if (x + radius > screenWidth || x - radius < 0) { velocityX *= -1f }
+            if (y - radius < 0) { y = radius; velocityY *= -1f }
         }
+
+        // Apply the maximum radius limit
+        radius = radius.coerceAtMost(MAX_RADIUS)
     }
 }
