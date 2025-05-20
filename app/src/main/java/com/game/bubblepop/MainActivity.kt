@@ -44,7 +44,7 @@ import java.io.Serializable
 class MainActivity : AppCompatActivity(), ScoreListener {
     // GameModeStates object to hold game mode states
     object GameModeStates {
-        var debugMode = false
+        var debugMode = true
         var isChaosModeActive = false
         var isSplitModeActive = false
         var isPowerUpModeActive = false
@@ -137,6 +137,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         val settingsButton = findViewById<ImageView>(R.id.settingsbutton)
         val scoreDisplayText = findViewById<TextView>(R.id.textViewscoredisp)
         val startButton = findViewById<ImageView>(R.id.startbutton)
+        val gainLevelButton = findViewById<Button>(R.id.gainlevelbutton)
         // For testing purposes, you can enable debug settings to force a consent dialog
         if (GameModeStates.debugMode) {
         val debugSettings = ConsentDebugSettings.Builder(this)
@@ -196,7 +197,12 @@ class MainActivity : AppCompatActivity(), ScoreListener {
             resetProgressButton.setOnClickListener {
                 resetGameProgress()
             }
-        } else resetProgressButton.visibility = View.GONE
+            gainLevelButton.setOnClickListener {
+                manualLevelGain()
+            }
+        } else {
+            gainLevelButton.visibility = View.GONE
+            resetProgressButton.visibility = View.GONE}
 
         // SoundPool for playing sound effects
         val audioAttributes = AudioAttributes.Builder()
@@ -389,7 +395,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
 
         isLoadingAd = true
         val adRequest = AdRequest.Builder().build()
-        val adUnitId = getString(R.string.interstitial_id)
+        val adUnitId = getString(R.string.inter_test)
         InterstitialAd.load(
             this, // Assuming this code is within an Activity or Fragment
             adUnitId.toString(),
@@ -747,7 +753,32 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         val availableMutators = GameModeStates.getAvailableMutators(currentLevel, levelUpThresholds)
         Log.d("MainActivity", "updateLevelUI - Current Level: $currentLevel, Available Mutators: $availableMutators")
     }
+    private fun manualLevelGain(){
+        // Award enough XP to reach the next level
+        // We want to simulate gaining XP to hit the *next* level's threshold.
+        // If currentLevel is 1, next threshold is for level 2.
+        // So, we add the XP needed to reach the threshold for the currentLevel + 1.
+        val xpNeededForNextLevel = getXpThresholdForLevel(currentLevel + 1)
+        totalXP = xpNeededForNextLevel
+        currentXP = 0 // Reset current XP as we're now at the start of a new level's progress
 
+        // Recalculate the current level based on the new totalXP
+        currentLevel = calculateLevel(totalXP)
+
+        // No need to set previousLevel explicitly for this, as animateLevelProgress handles it.
+        // The previousLevel variable isn't directly used for logic in animateLevelProgress
+        // beyond indicating the starting point for the animation.
+
+        // Save the updated progress
+        saveGameProgress()
+
+        // Update the UI to reflect the new level and XP
+        updateLevelUI()
+
+        // You might also want to play a level-up sound or show a celebratory message here.
+        // For example:
+        // soundPool?.play(levelUpSoundId, 1f, 1f, 0, 0, 1f)
+    }
     private fun resetGameProgress() {
         Log.d("MainActivity", "Resetting game progress")
         totalXP = 0
