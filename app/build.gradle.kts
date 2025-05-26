@@ -13,8 +13,8 @@ android {
         applicationId = "com.game.bubblepop"
         minSdk = 24
         targetSdk = 35
-        versionCode = 26
-        versionName = "3.5"
+        versionCode = 28
+        versionName = "3.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

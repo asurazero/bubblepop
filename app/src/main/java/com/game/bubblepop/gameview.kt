@@ -9,6 +9,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.graphics.RectF
 import androidx.media3.common.util.Log
+import com.game.bubblepop.MainActivity.GameModeStates // Import GameModeStates directly
 
 class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), Game.RedrawListener {
     //Other Game modes
@@ -25,6 +26,8 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
     private var touchOffsetX = 0f // Store offset from bomb center
     private var touchOffsetY = 0f
     private var isCurrentlyDragging = false
+    private var lastFrameTime: Long = System.currentTimeMillis() // Added to correctly calculate deltaTime
+
     init {
         gameContext = context
     }
@@ -87,10 +90,26 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
         style = Paint.Style.FILL
     }
     val paint = Paint()
+
+    // --- NEW: Paint for Spike Traps ---
+    private val spikeFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { // For the red fill
+        color = Color.RED
+        style = Paint.Style.FILL
+    }
+    private val spikeStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { // For the black outline
+        color = Color.BLACK
+        style = Paint.Style.STROKE
+        strokeWidth = 12f // Thicker outline for spikes, adjust as needed
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
         game?.let { currentGame ->
+            val currentTime = System.currentTimeMillis()
+            val deltaTime = currentTime - lastFrameTime // Calculate deltaTime
+            lastFrameTime = currentTime // Update for the next frame
+
             // Draw the background
             canvas.drawColor(Color.WHITE)
 
@@ -121,13 +140,16 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                 // Null check for the bubble object
                 if (bubble != null) {
                     val paintToUse = when (bubble.bubbleType) {
-                        BubbleType.NORMAL -> if (bubble.isAboutToPop()) approachingPopPaint else normalPaint
+                        BubbleType.NORMAL -> {
+                            // Check for level > 50 (isRed) or about to pop
+                            if (bubble.isRed || bubble.isAboutToPop()) approachingPopPaint else normalPaint
+                        }
                         BubbleType.NEGATIVE -> negativePaint
                         BubbleType.POWER_UP -> normalPaint
-                        else -> normalPaint // Add a default case, though it shouldn't happen
+                        // No else needed if all BubbleType enums are covered
                     }
                     //check for the max radius
-                    val drawRadius = Math.min(bubble.radius, 200f)
+                    val drawRadius = Math.min(bubble.radius, 200f) // Using remembered upper limit
                     canvas.drawCircle(bubble.x, bubble.y, drawRadius, paintToUse)
                     if (bubble.bubbleType == BubbleType.NORMAL) { // Draw outline for normal bubbles
                         canvas.drawCircle(bubble.x, bubble.y, drawRadius, normalStrokePaint)
@@ -178,6 +200,13 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
             // Draw bomb (check if active *before* getting details)
             if (currentGame.isBombActive()) {
                 val bombData = currentGame.getBombDetailsForDrawing()
+                // Update bomb color for flashing effect if near explosion
+                bombPaint.color = Color.BLACK
+                val elapsedTime = System.currentTimeMillis() - (currentGame.getBombEndTime() - 3000L) // Assuming 3-sec duration
+                val flashInterval = 200 // milliseconds
+                if (elapsedTime > 2000L && (elapsedTime / flashInterval) % 2L == 0L) { // Corrected: ensure comparison is Long == Long
+                    bombPaint.color = Color.RED
+                }
                 canvas.drawCircle(bombData.first, bombData.second, bombData.third, bombPaint)
             }
 
@@ -193,22 +222,33 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                 rectPaint
             )
 
+            // --- NEW: Draw Spike Traps (with fill and stroke) ---
+            if (GameModeStates.isSpikeTrapModeActive) {
+                for (spike in currentGame.getSpikeTraps()) {
+                    val path = android.graphics.Path()
+                    path.moveTo(spike.x + spike.width / 2, spike.y) // Top center
+                    path.lineTo(spike.x, spike.y + spike.height)    // Bottom-left
+                    path.lineTo(spike.x + spike.width, spike.y + spike.height) // Bottom-right
+                    path.close()
+
+                    canvas.drawPath(path, spikeFillPaint)   // Draw the red fill
+                    canvas.drawPath(path, spikeStrokePaint) // Draw the black outline
+                }
+            }
+
             // Draw score and level
             canvas.drawText("Score: ${currentGame.getScore()}", 50f, 100f, scorePaint)
             canvas.drawText("Level: ${currentGame.getLevel()}", 50f, 150f, levelPaint)
             canvas.drawText("Missed: ${currentGame.getMissedBubbles()}", 50f, 200f, scorePaint)
 
             // Update game state and request redraw
-            currentGame.update()
-            if (currentGame.getBubbles().isNotEmpty() || !currentGame.isGameOver()) {
+            currentGame.update(deltaTime) // Pass deltaTime to game update
+
+            if (currentGame.getBubbles().isNotEmpty() || !currentGame.isGameOver() || GameModeStates.isSpikeTrapModeActive) { // Keep drawing if spikes are active
                 postInvalidateOnAnimation()
             }
         }
     }
-
-
-
-
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         game?.let { currentGame ->
@@ -220,12 +260,23 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                         val x = event.x
                         val y = event.y
 
+                        // --- NEW: Handle Spike Trap Tap First ---
+                        if (GameModeStates.isSpikeTrapModeActive) {
+                            val spikeTapped = currentGame.handleSpikeTrapTap(x, y)
+                            if (spikeTapped) {
+                                lastClickTime = currentTime // Debounce for spike taps too
+                                return true // Consume the event if a spike was tapped
+                            }
+                        }
+
+                        // Original bomb and bubble tap logic (only if no spike was tapped, or if you want both to be possible)
                         if (currentGame.isBombActive()  && currentGame.isPointInsideBomb(x, y)) {
                             // Bomb tapped! Stop the bomb and trigger the pop.
                             currentGame.setBombStopped(true)
                             currentGame.popAdjacentBubbles()
                             currentGame.setBombActive(false) // Deactivate the bomb after popping
                             currentGame.redrawListener?.onRedrawRequested()
+                            lastClickTime = currentTime // Debounce for bomb taps
                             return true // Consume the touch event
                         } else {
                             // Handle regular clicks (e.g., shooting bubbles)

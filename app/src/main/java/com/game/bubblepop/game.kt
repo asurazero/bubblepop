@@ -99,7 +99,16 @@ class Game(
             return newInterval
         }
     private val centralOrbitPoint: PointF = PointF(screenWidth / 2f, screenHeight / 3f) // Adjusted Y for better visibility of orbit
+    //Spikes
 
+    private var lastLoopTime: Long = System.currentTimeMillis()
+    private val spikeTraps = mutableListOf<SpikeTrap>()
+    private var lastSpikeSpawnTime: Long = 0
+    private val spikeSpawnInterval = 2000L // Spawn a spike every 2 seconds (adjust as needed)
+    private val spikeSpeed = 150f // Pixels per second (adjust as needed)
+    private val spikeWidth = 80f // Adjust size as needed
+    private val spikeHeight = 80f // Adjust size as needed
+    //Spikes
     private var levelsSinceAd = 0
     private val maxAllowedBubbleRadius = 250f // Define your maximum allowed radius
     private val maxSpawnInterval: Long = 4
@@ -270,7 +279,38 @@ class Game(
     }
 
 
-    fun update() {
+    fun update(deltaTime: Long) {
+        if (GameModeStates.isSpikeTrapModeActive) {
+            val currentTime = System.currentTimeMillis()
+
+            // Spawn new spikes
+            if (currentTime - lastSpikeSpawnTime > spikeSpawnInterval) {
+                val spawnX = (Math.random() * (screenWidth - spikeWidth)).toFloat()
+                val spawnY = screenHeight.toFloat() // Start at the bottom
+                spikeTraps.add(SpikeTrap(spawnX, spawnY, spikeWidth, spikeHeight, spikeSpeed))
+                lastSpikeSpawnTime = currentTime
+            }
+
+            // Update and remove off-screen spikes
+            val spikesToRemove = mutableListOf<SpikeTrap>()
+            for (spike in spikeTraps) {
+                spike.update(deltaTime)
+                // Remove spikes that have gone off-screen (top)
+                if (spike.y + spike.height < 0) { // If top of spike is above the screen
+                    spikesToRemove.add(spike)
+                }
+            }
+            spikeTraps.removeAll(spikesToRemove)
+
+            // If mutator is inactive, clear any existing spikes
+            if(!MainActivity.GameModeStates.isSpikeTrapModeActive) {
+                spikeTraps.clear()
+            }
+        }
+
+        // ... rest of your update logic ...
+
+
 
         if (MainActivity.GameModeStates.isSplitModeActive == true) {
             isSplitModeActive = true
@@ -360,7 +400,19 @@ class Game(
         for (bubble in bubbles.toList()) {
             try {
                 val bubbleRect = RectF(bubble.x - bubble.radius, bubble.y - bubble.radius, bubble.x + bubble.radius, bubble.y + bubble.radius)
-
+                if (GameModeStates.isSpikeTrapModeActive) {
+                    var hitBySpike = false
+                    for (spike in spikeTraps) {
+                        if (spike.collidesWithBubble(bubble.x, bubble.y, bubble.radius)) {
+                            bubblesToRemove.add(bubble)
+                            hitBySpike = true
+                            break // Bubble hit, no need to check other spikes for this bubble
+                        }
+                    }
+                    if (hitBySpike) {
+                        continue // Move to the next bubble as this one is destroyed
+                    }
+                }
                 if (isRectangleActive && RectF.intersects(bubbleRect, rectangleRect)) {
                     bubblesToRemove.add(bubble) // Add to removal list
                     if (bubble.bubbleType == BubbleType.NORMAL) {
@@ -386,7 +438,7 @@ class Game(
                     }
 
                     if (level > 50) {
-                        bubble.isRed = true
+                        bubble.isRed = false
                         bubble.popLifespanMultiplier = 0.7f
                         increaseDifficulty()
                     }
@@ -938,17 +990,30 @@ class Game(
     private fun startGameLoop() {
         executor.scheduleAtFixedRate({
             try {
-                update() // Call update() on the background thread
+                val currentTime = System.currentTimeMillis()
+                val deltaTime = currentTime - lastLoopTime
+                lastLoopTime = currentTime // Update for the next iteration
+
+                update(deltaTime) // Call update() with deltaTime on the background thread
                 // Post the redraw request back to the main thread
                 redrawListener?.let {
-                    (context as? GamePlay)?.runOnUiThread {
-                        it.onRedrawRequested()
+                    // Assuming context can be cast to GamePlay or you have a way to run on UI thread
+                    // This part depends on how your MainActivity/GamePlay is structured to receive redraw requests
+                    if (context is GamePlay) { // Example: if MainActivity implements GamePlay
+                        (context as GamePlay).runOnUiThread {
+                            it.onRedrawRequested()
+                        }
+                    } else if (context is Context) { // Fallback if not GamePlay, might need specific handler
+                        // If GameView is directly attached to MainActivity, and MainActivity is the context
+                        // you might need a Handler for the main thread or ensure invalidate() is safe.
+                        // For a View, invalidate() implicitly runs on UI thread.
+                        it.onRedrawRequested() // invalidate() is safe to call from any thread
                     }
                 }
             } catch (e: Exception) {
-                Log.e("Game", "Error ingame loop: ${e.message}", e)
+                Log.e("Game", "Error in game loop: ${e.message}", e)
             }
-        }, 0, 16, TimeUnit.MILLISECONDS) // ~60 FPS, adjust as needed.  Make this a property.
+        }, 0, 16, TimeUnit.MILLISECONDS) // ~60 FPS, adjust as needed. Make this a property.
     }
 
     fun cleanup() {
@@ -1011,6 +1076,33 @@ class Game(
     fun getMissedBubbleThreshold(): Int {
         return missedBubbleThreshold
     }
+    // New method to get spike traps for drawing in GameView
+    fun getSpikeTraps(): List<SpikeTrap> {
+        return spikeTraps
+    }
+
+    // New method to handle a tap on a spike trap
+    fun handleSpikeTrapTap(tapX: Float, tapY: Float): Boolean {
+        if (!GameModeStates.isSpikeTrapModeActive) return false
+
+        val tappedSpikes = mutableListOf<SpikeTrap>()
+        var spikeTapped = false
+        for (spike in spikeTraps) {
+            if (spike.isTapped(tapX, tapY)) {
+                tappedSpikes.add(spike)
+                spikeTapped = true
+                // Play sound effect for spike destruction
+                // soundPlayer.play(spikeDestroySoundId, 1f, 1f, 0, 0, 1f) // Pass soundPool or a sound manager to Game class
+                // Or if you have a sound manager:
+                // gameSoundPlayer.playSpikeDestroySound()
+            }
+        }
+        spikeTraps.removeAll(tappedSpikes) // Remove tapped spikes
+        return spikeTapped // Return true if any spike was tapped
+    }
+
+    // You'll likely have a similar getBubbles() method for GameView to draw
+
 
 }
 

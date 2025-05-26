@@ -56,7 +56,7 @@ class LoopingMusicPlayer(private val context: Context, private val musicResource
         if (isPrepared && mediaPlayer != null) {
             try {
                 mediaPlayer?.start()
-                Log.d("LoopingMusicPlayer", "Started playing music.")
+
             } catch (e: Exception) {
                 Log.e("LoopingMusicPlayer", "Error starting music: ${e.message}")
                 prepareMediaPlayer() //try to prepare again
