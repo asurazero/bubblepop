@@ -14,6 +14,14 @@ import com.game.bubblepop.MainActivity.GameModeStates // Import GameModeStates d
 class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), Game.RedrawListener {
     //Other Game modes
     var isSplitModeActive = false
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        // This is the correct place to inform the Game object about its dimensions
+        game.setGameDimensions(w, h)
+        // If you need to re-initialize or adjust game elements based on new dimensions, do it here.
+        // For example, if you want initial bubbles to span the full width/height
+        // or if a fixed initial position needs to be relative to the new dimensions.
+    }
 
 
     //Other Game modes
@@ -101,6 +109,7 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
         style = Paint.Style.STROKE
         strokeWidth = 12f // Thicker outline for spikes, adjust as needed
     }
+
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -235,6 +244,11 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                     canvas.drawPath(path, spikeStrokePaint) // Draw the black outline
                 }
             }
+            // --- NEW: Draw all square blocks (retrieved from Game) ---
+            currentGame.getSquareBlocks().forEach { block ->
+                block.draw(canvas)
+            }
+
 
             // Draw score and level
             canvas.drawText("Score: ${currentGame.getScore()}", 50f, 100f, scorePaint)

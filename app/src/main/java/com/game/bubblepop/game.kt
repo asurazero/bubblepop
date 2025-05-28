@@ -277,9 +277,51 @@ class Game(
     fun isGreenRectangleEffectActive(): Boolean {
         return isGreenRectangleActive
     }
+    //Square block functions
 
+    // NEW: List to hold SquareBlock objects
+    private val squareBlocks = mutableListOf<SquareBlock>()
+    private var lastSquareBlockSpawnTime: Long = 0L
+    private val squareBlockSpawnInterval = 3000L // Spawn a new block every 3 seconds
+    // NEW: Properties for game dimensions
+    var gameWidth: Int = 0
+        private set
+    var gameHeight: Int = 0
+        private set
+    // NEW: Initialize game dimensions
+    fun setGameDimensions(width: Int, height: Int) {
+        this.gameWidth = width
+        this.gameHeight = height
+    }
+
+    fun getSquareBlocks(): List<SquareBlock> {
+        return squareBlocks
+    }
 
     fun update(deltaTime: Long) {
+        if(GameModeStates.isBlockModeActive){
+            val currentTime = System.currentTimeMillis()
+            if (GameModeStates.isBlockModeActive && currentTime - lastSquareBlockSpawnTime > squareBlockSpawnInterval) {
+                println("add square block")
+                addRandomSquareBlock()
+                lastSquareBlockSpawnTime = currentTime
+            }
+        }
+        // --- NEW: Update and clean up Square Blocks ---
+        // Iterate backward to safely remove stopped blocks
+        val blocksToRemove = mutableListOf<SquareBlock>()
+        for (block in squareBlocks) {
+            block.update(gameHeight) // Pass gameHeight for stopping logic
+            if (block.isStopped) {
+                // Decide what happens when a block stops
+                // For now, we'll just mark it for removal
+                //blocksToRemove.add(block)
+            }
+            // You might add collision detection here later
+        }
+        squareBlocks.removeAll(blocksToRemove)
+
+
         if (GameModeStates.isSpikeTrapModeActive) {
             val currentTime = System.currentTimeMillis()
 
@@ -1099,6 +1141,22 @@ class Game(
         }
         spikeTraps.removeAll(tappedSpikes) // Remove tapped spikes
         return spikeTapped // Return true if any spike was tapped
+    }
+
+    // NEW: Method to add a random square block (called internally by Game.update)
+    private fun addRandomSquareBlock() {
+        if (gameWidth == 0 || gameHeight == 0) {
+            Log.w("Game", "Game dimensions not set, cannot spawn square block.")
+            return
+        }
+
+        val size = 200f
+        val x = (Math.random() * (gameWidth - size)).toFloat()
+        val y = -size
+        val fillColor = Color.LTGRAY // <--- Changed this to Light Gray!
+        val speed = 5f + (Math.random() * 5).toFloat()
+        // Pass fillColor to the SquareBlock constructor
+        squareBlocks.add(SquareBlock(x, y, size, fillColor, speed))
     }
 
     // You'll likely have a similar getBubbles() method for GameView to draw

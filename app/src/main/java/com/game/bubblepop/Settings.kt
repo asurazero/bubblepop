@@ -206,6 +206,7 @@ class Settings : AppCompatActivity() {
         MainActivity.GameModeStates.isPowerUpModeActive = mutator == "PowerUp"
         MainActivity.GameModeStates.isOrbitalModeActive = mutator == "Orbit"
         MainActivity.GameModeStates.isSpikeTrapModeActive = mutator == "Spikes"
+        MainActivity.GameModeStates.isBlockModeActive = mutator == "Blocks"
         Log.d("Settings", "updateMutatorState called. isSplitModeActive: ${MainActivity.GameModeStates.isSplitModeActive}, isChaosModeActive: ${MainActivity.GameModeStates.isChaosModeActive}")
     }
 
