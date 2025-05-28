@@ -15,6 +15,9 @@ import com.game.bubblepop.MainActivity.GameModeStates
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlin.random.Random
@@ -278,7 +281,7 @@ class Game(
         return isGreenRectangleActive
     }
     //Square block functions
-
+    private val bubblesToRemove = mutableListOf<Bubble>() // List to hold bubbles to be removed
     // NEW: List to hold SquareBlock objects
     private val squareBlocks = mutableListOf<SquareBlock>()
     private var lastSquareBlockSpawnTime: Long = 0L
@@ -292,14 +295,25 @@ class Game(
     fun setGameDimensions(width: Int, height: Int) {
         this.gameWidth = width
         this.gameHeight = height
-    }
 
+        rectangleX = (gameWidth - rectangleWidth) / 2f
+        rectangleY = gameHeight + 50f // Keep it off-screen, it won't be used
+    }
+    //TODO start from here and finish block collisions and bubble removal
     fun getSquareBlocks(): List<SquareBlock> {
         return squareBlocks
     }
-
+    private var blocksToRemove = mutableListOf<SquareBlock>()
     fun update(deltaTime: Long) {
         if(GameModeStates.isBlockModeActive){
+
+            val maxRectangleRiseSpeed = 0.000f
+            rectangleRiseSpeed =  0.00000f + (level * 0.00f)
+            if (rectangleRiseSpeed > maxRectangleRiseSpeed) {
+                    rectangleRiseSpeed = maxRectangleRiseSpeed
+            }
+            isRectangleActive=false
+
             val currentTime = System.currentTimeMillis()
             if (GameModeStates.isBlockModeActive && currentTime - lastSquareBlockSpawnTime > squareBlockSpawnInterval) {
                 println("add square block")
@@ -309,19 +323,194 @@ class Game(
         }
         // --- NEW: Update and clean up Square Blocks ---
         // Iterate backward to safely remove stopped blocks
-        val blocksToRemove = mutableListOf<SquareBlock>()
+
+        val currentRectangleBounds = RectF(rectangleX, rectangleY,
+            rectangleX + rectangleWidth,
+            rectangleY + rectangleHeight) // Ensure this is defined outside the loop
+
         for (block in squareBlocks) {
-            block.update(gameHeight) // Pass gameHeight for stopping logic
-            if (block.isStopped) {
-                // Decide what happens when a block stops
-                // For now, we'll just mark it for removal
-                //blocksToRemove.add(block)
+            val blockCurrentBounds = block.bounds // Get the block's bounds *before* potential vertical movement
+
+            // --- Vertical Movement and Stopping ---
+            if (!block.isStopped) { // Only move vertically if not currently stopped
+                block.moveVertically()
             }
-            // You might add collision detection here later
+
+            // Update block's bounds after potential vertical movement for current frame
+            val blockNextVerticalBounds = block.bounds
+
+            // Get Red Rectangle's current position for collision checks (using properties directly)
+            val redRectangleTop = rectangleY
+            val redRectangleBottom = rectangleY + rectangleHeight
+            val redRectangleLeft = rectangleX
+            val redRectangleRight = rectangleX + rectangleWidth
+
+            // Check for vertical collision (sitting on top of the Red Rectangle)
+            // Use a small tolerance for the 'was above' check to handle floating point precision
+            val verticalCollisionTolerance = block.speed + 1f // Slightly more than block's speed
+
+            val blockWouldHitRedRectangleVertically =
+                blockNextVerticalBounds.bottom >= redRectangleTop && // Block's bottom is at or below rectangle's top
+                        blockCurrentBounds.bottom <= redRectangleTop + verticalCollisionTolerance && // Block was just above or touching
+                        blockNextVerticalBounds.right > redRectangleLeft && // Horizontal overlap
+                        blockNextVerticalBounds.left < redRectangleRight
+
+            if (blockWouldHitRedRectangleVertically) {
+                block.y = redRectangleTop - block.size // Snap to top of the Red Rectangle
+                block.isStopped = true // Stop vertical movement
+                // Blocks move horizontally with the Red Rectangle only if the Red Rectangle moves horizontally,
+                // but the Red Rectangle only moves vertically, so no horizontal adjustment here.
+            } else if (block.isStopped) {
+                // Check if it was previously stopped (on Red Rectangle or ground) but now lost support
+                // Use a small tolerance for float comparisons (e.g., 2f)
+                val comparisonTolerance = 2f
+
+                val isOnRedRectangleCurrently =
+                    abs(blockNextVerticalBounds.bottom - redRectangleTop) < comparisonTolerance && // Check if snapped to rectangle's top within tolerance
+                            blockNextVerticalBounds.right > redRectangleLeft &&
+                            blockNextVerticalBounds.left < redRectangleRight
+
+                val isOnGroundCurrently = abs(blockNextVerticalBounds.bottom - gameHeight) < comparisonTolerance // Check if snapped to ground within tolerance
+
+                if (isOnRedRectangleCurrently) {
+                    // If block is on the red rectangle, it should move up with it
+                    // Using the original movement for the red rectangle, applying speed directly per frame.
+                    block.y -= rectangleRiseSpeed
+                } else if (!isOnGroundCurrently) { // If not on Red Rectangle AND not on ground
+                    block.isStopped = false // Allow it to fall again
+                }
+            }
+
+            // Fallback: Check for collision with the bottom of the screen (ground) if still falling and not on Red Rectangle
+            if (!block.isStopped && blockNextVerticalBounds.bottom >= gameHeight) {
+                block.y = (gameHeight - block.size).toFloat() // Snap to bottom
+                block.isStopped = true // Stop
+            }
+
+            // --- Horizontal Collision and Pushing Logic (by the Red Rectangle) ---
+            // Blocks should be pushed if they try to enter the Red Rectangle from the sides.
+            val horizontalCollisionTolerance = 5f // This tolerance is for vertical overlap check
+
+            // Check if block is vertically within the Red Rectangle's height range (for side collision)
+            // AND not currently sitting on top (to avoid pushing it horizontally when it lands)
+            val isVerticallyOverlappingForSideCollision =
+                blockNextVerticalBounds.bottom > redRectangleTop + horizontalCollisionTolerance && // Block's bottom is below rectangle's top (not on top)
+                        blockNextVerticalBounds.top < redRectangleBottom - horizontalCollisionTolerance // Block's top is above rectangle's bottom
+
+            if (isVerticallyOverlappingForSideCollision) {
+                val blockLeftEdge = blockNextVerticalBounds.left
+                val blockRightEdge = blockNextVerticalBounds.right
+
+                // Determine if there's horizontal overlap
+                val horizontalOverlap =
+                    (blockRightEdge > redRectangleLeft && blockLeftEdge < redRectangleRight)
+
+                if (horizontalOverlap) {
+                    // Decide which side to push the block out from.
+                    // Push from the side closest to the block's center.
+                    val blockCenterX = blockCurrentBounds.centerX()
+                    val rectCenterX = currentRectangleBounds.centerX()
+
+                    if (blockCenterX < rectCenterX) {
+                        // Block is to the left of rectangle's center, push it left
+                        block.x = redRectangleLeft - block.size
+                    } else {
+                        // Block is to the right of rectangle's center, push it right
+                        block.x = redRectangleRight
+                    }
+                }
+            }
         }
-        squareBlocks.removeAll(blocksToRemove)
+        // --- NEW: Remove blocks marked for removal ---
+        if (blocksToRemove.isNotEmpty()) {
+            squareBlocks.removeAll(blocksToRemove) // <--- Actual removal happens here
+            blocksToRemove.clear() // Clear the list after removal
+            redrawListener?.onRedrawRequested() // Request redraw after actual removal
+        } // This line likely belongs elsewhere, or is for clearing blocks
+
+// --- NEW: Square Block to Square Block Collision Resolution ---
+// This part goes AFTER the loop where each individual block is updated against the environment.
+        val numBlocks = squareBlocks.size
+        for (i in 0 until numBlocks) {
+            val block1 = squareBlocks[i]
+            for (j in i + 1 until numBlocks) { // Compare each block with every other block once
+                val block2 = squareBlocks[j]
+
+                // Check if the bounding boxes of the two blocks intersect
+                if (android.graphics.RectF.intersects(block1.bounds, block2.bounds))  {
+                    // Calculate the amount of overlap in both X and Y directions
+                    val overlapX = min(block1.bounds.right, block2.bounds.right) - max(block1.bounds.left, block2.bounds.left)
+                    val overlapY = min(block1.bounds.bottom, block2.bounds.bottom) - max(block1.bounds.top, block2.bounds.top)
+
+                    // Ensure overlap is positive (meaning they are genuinely overlapping)
+                    if (overlapX > 0 && overlapY > 0) {
+                        // Resolve collision based on the axis of least penetration (Minimum Translation Vector - MTV)
+                        if (overlapX < overlapY) { // Overlap is smaller horizontally, resolve by pushing horizontally
+                            // Determine which side to push based on center points
+                            if (block1.bounds.centerX() < block2.bounds.centerX()) {
+                                // block1 is to the left of block2, push block1 left, block2 right
+                                block1.x -= overlapX / 2f
+                                block2.x += overlapX / 2f
+                            } else {
+                                // block1 is to the right of block2, push block1 right, block2 left
+                                block1.x += overlapX / 2f
+                                block2.x -= overlapX / 2f
+                            }
+                        } else { // Overlap is smaller vertically, resolve by pushing vertically
+                            // Determine which direction to push based on center points
+                            if (block1.bounds.centerY() < block2.bounds.centerY()) {
+                                // block1 is above block2, push block1 up, block2 down
+                                block1.y -= overlapY / 2f
+                                block2.y += overlapY / 2f
+                                // For true stacking, you'd need more complex logic here
+                            } else {
+                                // block1 is below block2, push block1 down, block2 up
+                                block1.y += overlapY / 2f
+                                block2.y -= overlapY / 2f
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
 
+        // Collision: Stopped Square Blocks popping Bubbles
+
+        // Prepare a list for bubbles that need to be removed (pushed or hit by blocks)
+        val bubblesToRemove = mutableListOf<Bubble>()
+
+        // Collision: Stopped Square Blocks popping Bubbles
+        Log.d("CollisionDebug", "Checking collision. Number of bubbles: ${bubbles.size}, Number of stopped blocks: ${squareBlocks.count { it.isStopped }}")
+        for (block in squareBlocks) {
+            if (block.isStopped) { // Only check for stopped blocks
+                for (bubble in bubbles) {
+                    // Check for intersection between square block (RectF) and bubble (circle)
+                    // This is a basic AABB-circle collision check.
+                    // More precise: find closest point on rectangle to circle center, then check distance.
+                    val closestX = max(block.bounds.left, min(bubble.x, block.bounds.right))
+                    val closestY = max(block.bounds.top, min(bubble.y, block.bounds.bottom))
+
+                    val distanceX = bubble.x - closestX
+                    val distanceY = bubble.y - closestY
+                    val distanceSquared = (distanceX * distanceX) + (distanceY * distanceY)
+
+                    Log.d("CollisionDebug", "Bubble ${bubble.hashCode()} (X:${bubble.x}, Y:${bubble.y}, R:${bubble.radius}) vs Block ${block.hashCode()} (Bounds:${block.bounds}). Closest: (${closestX}, ${closestY}). DistSq:${distanceSquared}, R*R:${bubble.radius * bubble.radius}")
+
+                    if (distanceSquared < (bubble.radius * bubble.radius)) {
+                        // Collision detected!
+                        if (bubble.bubbleType != BubbleType.NEGATIVE && bubble.bubbleType != BubbleType.POWER_UP) {
+                            missedBubbles++ // Increment missed count for non-special bubbles
+                            Log.d("Game", "Bubble popped by square block! Missed: $missedBubbles")
+                            if (missedBubbles >= missedBubbleThreshold) {
+                                isGameOver()
+                            }
+                        }
+                        bubblesToRemove.add(bubble) // Mark bubble for removal
+                    }
+                }
+            }
+        }
         if (GameModeStates.isSpikeTrapModeActive) {
             val currentTime = System.currentTimeMillis()
 
@@ -372,7 +561,7 @@ class Game(
             lastSpawnTime = currentTime
         }
 
-        val bubblesToRemove = mutableListOf<Bubble>() // List to hold bubbles to be removed
+
 
         if (missedBubbles >= missedBubbleThreshold && gameActive) {
             gameActive = false
@@ -425,6 +614,13 @@ class Game(
                         rectangleRiseSpeed = maxRectangleRiseSpeed
                     }
 
+                }
+                if(GameModeStates.isBlockModeActive){
+                    val maxRectangleRiseSpeed = 0.000f
+                    rectangleRiseSpeed =  0.00000f + (level * 0.00f)
+                    if (rectangleRiseSpeed > maxRectangleRiseSpeed) {
+                        rectangleRiseSpeed = maxRectangleRiseSpeed
+                    }
                 }
                 //set normal at 0.1f //4.0 or 2.5 for game over tests
                 redrawListener?.onRedrawRequested()
@@ -604,6 +800,16 @@ class Game(
     fun processClick(clickX: Float, clickY: Float, isSplitMode: Boolean) {
         if (!gameActive) return
         var bubbleClicked = false
+        var clickHandled = false
+
+        // --- NEW: Check for Square Block Tap First ---
+        if (handleSquareBlockTapInternal(clickX, clickY)) {
+            clickHandled = true
+            // No 'return' here, so flow continues, but subsequent 'if (!clickHandled)'
+            // blocks will prevent other items from being processed if a block was tapped.
+        }
+
+
         println("split mode: $isSplitMode")
         // Check for negative bubble click first
         val negativeBubble = bubbles.find { it.isClicked(clickX, clickY) && it.bubbleType == BubbleType.NEGATIVE }
@@ -1158,7 +1364,16 @@ class Game(
         // Pass fillColor to the SquareBlock constructor
         squareBlocks.add(SquareBlock(x, y, size, fillColor, speed))
     }
-
+    private fun handleSquareBlockTapInternal(tapX: Float, tapY: Float): Boolean {
+        val tappedBlock = squareBlocks.find { it.bounds.contains(tapX, tapY) }
+        if (tappedBlock != null) {
+            blocksToRemove.add(tappedBlock) // <--- Block is added to the removal list here
+            // Do not call redrawListener here, it will be called after update
+            Log.d("Game", "Square block tapped and added to removal list! Score: $score")
+            return true // Indicate that a block was tapped
+        }
+        return false // No block was tapped
+    }
     // You'll likely have a similar getBubbles() method for GameView to draw
 
 
