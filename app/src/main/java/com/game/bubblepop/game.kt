@@ -124,7 +124,7 @@ class Game(
     // Integrate LoopingMusicPlayer
     private val musicPlayer: LoopingMusicPlayer
     private var soundPool: SoundPool
-
+    private val blockbreak:Int
     private val popSoundId: Int
     private val coinRingSoundId: Int
     private val executor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
@@ -156,6 +156,15 @@ class Game(
     private val bombShrinkSpeed = 2f
     //Other game modes
     var isSplitModeActive = false
+    private var timeSinceLastBlockSpawn: Long = 0L
+
+    // --- ADD THIS FIXED SPAWN INTERVAL ---
+    private var FIXED_BLOCK_SPAWN_INTERVAL_MS: Long = 5000L // Blocks will spawn every 2.5 seconds (adjust as desired)
+    // --- END ADDITION ---
+
+    // ... (Your existing 'blocksToSpawnPerEvent' and 'MAX_BLOCKS_TO_SPAWN_PER_EVENT') ...
+    private var blocksToSpawnPerEvent: Int = 1
+    private val MAX_BLOCKS_TO_SPAWN_PER_EVENT: Int = 5
 
     init {
         Log.d("MusicSetup", "Initializing audio...")
@@ -175,7 +184,7 @@ class Game(
         Log.d("MusicSetup", "popSoundId loaded: $popSoundId")
         coinRingSoundId = soundPool.load(context, R.raw.ding, 1)
         Log.d("MusicSetup", "coinRingSoundId loaded: $coinRingSoundId")
-
+        blockbreak= soundPool.load(context, R.raw.pr, 1)
         // Load and start music
         val gameMusicResourceId = R.raw.tgs
         Log.d("MusicSetup", "Loading music resource: $gameMusicResourceId")
@@ -299,20 +308,34 @@ class Game(
         rectangleX = (gameWidth - rectangleWidth) / 2f
         rectangleY = gameHeight + 50f // Keep it off-screen, it won't be used
     }
-    //TODO start from here and finish block collisions and bubble removal
+    //TODO debug blocks mode some more to make stable
     fun getSquareBlocks(): List<SquareBlock> {
         return squareBlocks
     }
     private var blocksToRemove = mutableListOf<SquareBlock>()
     fun update(deltaTime: Long) {
-        if(GameModeStates.isBlockModeActive){
-
-            val maxRectangleRiseSpeed = 0.000f
-            rectangleRiseSpeed =  0.00000f + (level * 0.00f)
-            if (rectangleRiseSpeed > maxRectangleRiseSpeed) {
-                    rectangleRiseSpeed = maxRectangleRiseSpeed
+        timeSinceLastBlockSpawn += deltaTime // Accumulate time
+        val currentBlocksSnapshot = squareBlocks.toList()
+        // Check if enough time has passed based on the fixed interval
+        if (timeSinceLastBlockSpawn >= FIXED_BLOCK_SPAWN_INTERVAL_MS) { // Use the fixed interval here
+            // Loop to spawn multiple blocks based on blocksToSpawnPerEvent
+            for (i in 0 until blocksToSpawnPerEvent) {
+                addRandomSquareBlock() // Call your existing function to add a block
             }
-            isRectangleActive=false
+            timeSinceLastBlockSpawn = 0L // Reset the timer for the next spawn event
+        }
+        Log.d("PhysicsTrace", "--- New Frame ---")
+
+        // 1. Game Mode & Spawning Logic
+        if (GameModeStates.isBlockModeActive) {
+            // These lines related to rectangleRiseSpeed and isRectangleActive seem like remnants or placeholders.
+            // If they don't serve a current purpose, you might consider removing them or updating their logic.
+            val maxRectangleRiseSpeed = 0.000f // This variable will always be 0.0f given the next line
+            rectangleRiseSpeed = 0.00000f + (level * 0.00f) // This calculation will always result in 0.0f
+            if (rectangleRiseSpeed > maxRectangleRiseSpeed) {
+                rectangleRiseSpeed = maxRectangleRiseSpeed
+            }
+            isRectangleActive = false // Hardcoding this to false might affect other parts of your game
 
             val currentTime = System.currentTimeMillis()
             if (GameModeStates.isBlockModeActive && currentTime - lastSquareBlockSpawnTime > squareBlockSpawnInterval) {
@@ -321,173 +344,120 @@ class Game(
                 lastSquareBlockSpawnTime = currentTime
             }
         }
-        // --- NEW: Update and clean up Square Blocks ---
-        // Iterate backward to safely remove stopped blocks
 
+        // `currentRectangleBounds` is declared but not used. You can remove this line.
         val currentRectangleBounds = RectF(rectangleX, rectangleY,
             rectangleX + rectangleWidth,
-            rectangleY + rectangleHeight) // Ensure this is defined outside the loop
+            rectangleY + rectangleHeight)
 
-        for (block in squareBlocks) {
-            val blockCurrentBounds = block.bounds // Get the block's bounds *before* potential vertical movement
 
-            // --- Vertical Movement and Stopping ---
-            if (!block.isStopped) { // Only move vertically if not currently stopped
+        // 2. Apply Movement (Gravity) to all active objects
+        // Square Blocks: Move vertically if not stopped
+        // The inner loop for ground collision was removed from here.
+        // Ground collision is now handled in its own dedicated section below.
+        for (block in currentBlocksSnapshot) { // <-- MODIFIED HERE
+            if (!block.isStopped) {
                 block.moveVertically()
+                Log.d("PhysicsTrace", "Block ${block.hashCode()} (Y:${block.y}) - After moveVertically, isStopped: ${block.isStopped}")
             }
+        }
 
-            // Update block's bounds after potential vertical movement for current frame
-            val blockNextVerticalBounds = block.bounds
 
-            // Get Red Rectangle's current position for collision checks (using properties directly)
-            val redRectangleTop = rectangleY
-            val redRectangleBottom = rectangleY + rectangleHeight
-            val redRectangleLeft = rectangleX
-            val redRectangleRight = rectangleX + rectangleWidth
 
-            // Check for vertical collision (sitting on top of the Red Rectangle)
-            // Use a small tolerance for the 'was above' check to handle floating point precision
-            val verticalCollisionTolerance = block.speed + 1f // Slightly more than block's speed
+        // 3. Collision Resolution Phase
 
-            val blockWouldHitRedRectangleVertically =
-                blockNextVerticalBounds.bottom >= redRectangleTop && // Block's bottom is at or below rectangle's top
-                        blockCurrentBounds.bottom <= redRectangleTop + verticalCollisionTolerance && // Block was just above or touching
-                        blockNextVerticalBounds.right > redRectangleLeft && // Horizontal overlap
-                        blockNextVerticalBounds.left < redRectangleRight
-
-            if (blockWouldHitRedRectangleVertically) {
-                block.y = redRectangleTop - block.size // Snap to top of the Red Rectangle
-                block.isStopped = true // Stop vertical movement
-                // Blocks move horizontally with the Red Rectangle only if the Red Rectangle moves horizontally,
-                // but the Red Rectangle only moves vertically, so no horizontal adjustment here.
-            } else if (block.isStopped) {
-                // Check if it was previously stopped (on Red Rectangle or ground) but now lost support
-                // Use a small tolerance for float comparisons (e.g., 2f)
-                val comparisonTolerance = 2f
-
-                val isOnRedRectangleCurrently =
-                    abs(blockNextVerticalBounds.bottom - redRectangleTop) < comparisonTolerance && // Check if snapped to rectangle's top within tolerance
-                            blockNextVerticalBounds.right > redRectangleLeft &&
-                            blockNextVerticalBounds.left < redRectangleRight
-
-                val isOnGroundCurrently = abs(blockNextVerticalBounds.bottom - gameHeight) < comparisonTolerance // Check if snapped to ground within tolerance
-
-                if (isOnRedRectangleCurrently) {
-                    // If block is on the red rectangle, it should move up with it
-                    // Using the original movement for the red rectangle, applying speed directly per frame.
-                    block.y -= rectangleRiseSpeed
-                } else if (!isOnGroundCurrently) { // If not on Red Rectangle AND not on ground
-                    block.isStopped = false // Allow it to fall again
-                }
-            }
-
-            // Fallback: Check for collision with the bottom of the screen (ground) if still falling and not on Red Rectangle
-            if (!block.isStopped && blockNextVerticalBounds.bottom >= gameHeight) {
-                block.y = (gameHeight - block.size).toFloat() // Snap to bottom
-                block.isStopped = true // Stop
-            }
-
-            // --- Horizontal Collision and Pushing Logic (by the Red Rectangle) ---
-            // Blocks should be pushed if they try to enter the Red Rectangle from the sides.
-            val horizontalCollisionTolerance = 5f // This tolerance is for vertical overlap check
-
-            // Check if block is vertically within the Red Rectangle's height range (for side collision)
-            // AND not currently sitting on top (to avoid pushing it horizontally when it lands)
-            val isVerticallyOverlappingForSideCollision =
-                blockNextVerticalBounds.bottom > redRectangleTop + horizontalCollisionTolerance && // Block's bottom is below rectangle's top (not on top)
-                        blockNextVerticalBounds.top < redRectangleBottom - horizontalCollisionTolerance // Block's top is above rectangle's bottom
-
-            if (isVerticallyOverlappingForSideCollision) {
-                val blockLeftEdge = blockNextVerticalBounds.left
-                val blockRightEdge = blockNextVerticalBounds.right
-
-                // Determine if there's horizontal overlap
-                val horizontalOverlap =
-                    (blockRightEdge > redRectangleLeft && blockLeftEdge < redRectangleRight)
-
-                if (horizontalOverlap) {
-                    // Decide which side to push the block out from.
-                    // Push from the side closest to the block's center.
-                    val blockCenterX = blockCurrentBounds.centerX()
-                    val rectCenterX = currentRectangleBounds.centerX()
-
-                    if (blockCenterX < rectCenterX) {
-                        // Block is to the left of rectangle's center, push it left
-                        block.x = redRectangleLeft - block.size
-                    } else {
-                        // Block is to the right of rectangle's center, push it right
-                        block.x = redRectangleRight
-                    }
+        // 3a. Block vs. Ground Collision (Primary Stopping Mechanism)
+        // This loop ensures blocks stop correctly at the bottom of the screen.
+        for (block in currentBlocksSnapshot) { // <-- MODIFIED HERE
+            if (!block.isStopped && block.bounds.bottom >= gameHeight) {
+                block.y = (gameHeight - block.size).toFloat()
+                block.isStopped = true
+                if (block.getCurrentFillColor() != Color.RED) {
+                    block.setFillColor(Color.RED)
+                    Log.d("PhysicsTrace", "Block ${block.hashCode()} (Y:${block.y}) - Ground Collision, isStopped: ${block.isStopped}, color set to RED.")
                 }
             }
         }
-        // --- NEW: Remove blocks marked for removal ---
-        if (blocksToRemove.isNotEmpty()) {
-            squareBlocks.removeAll(blocksToRemove) // <--- Actual removal happens here
-            blocksToRemove.clear() // Clear the list after removal
-            redrawListener?.onRedrawRequested() // Request redraw after actual removal
-        } // This line likely belongs elsewhere, or is for clearing blocks
 
-// --- NEW: Square Block to Square Block Collision Resolution ---
-// This part goes AFTER the loop where each individual block is updated against the environment.
-        val numBlocks = squareBlocks.size
+        // 3b. Square Block to Square Block Collision Resolution (for stacking)
+        // Use a copy for safe iteration, ensuring correct block interactions without concurrent modification issues.
+        val blocksToProcessForStacking = squareBlocks.toList()
+        val numBlocks = blocksToProcessForStacking.size
         for (i in 0 until numBlocks) {
-            val block1 = squareBlocks[i]
-            for (j in i + 1 until numBlocks) { // Compare each block with every other block once
-                val block2 = squareBlocks[j]
+            val block1 = blocksToProcessForStacking[i]
+            for (j in i + 1 until numBlocks) {
+                val block2 = blocksToProcessForStacking[j]
 
-                // Check if the bounding boxes of the two blocks intersect
-                if (android.graphics.RectF.intersects(block1.bounds, block2.bounds))  {
-                    // Calculate the amount of overlap in both X and Y directions
+                // Skip if it's the same block or if either block is already marked for removal
+                if (block1 == block2 || blocksToRemove.contains(block1) || blocksToRemove.contains(block2)) continue
+
+                if (android.graphics.RectF.intersects(block1.bounds, block2.bounds)) {
                     val overlapX = min(block1.bounds.right, block2.bounds.right) - max(block1.bounds.left, block2.bounds.left)
                     val overlapY = min(block1.bounds.bottom, block2.bounds.bottom) - max(block1.bounds.top, block2.bounds.top)
 
-                    // Ensure overlap is positive (meaning they are genuinely overlapping)
                     if (overlapX > 0 && overlapY > 0) {
-                        // Resolve collision based on the axis of least penetration (Minimum Translation Vector - MTV)
-                        if (overlapX < overlapY) { // Overlap is smaller horizontally, resolve by pushing horizontally
-                            // Determine which side to push based on center points
+                        if (overlapY <= overlapX) { // Prioritize vertical resolution for proper stacking
+                            // Check if block1 is above block2
+                            if (block1.bounds.centerY() < block2.bounds.centerY()) {
+                                // block1 is above block2: Push block1 up onto block2
+                                block1.y = block2.bounds.top - block1.size
+
+                                // CRITICAL CHANGE: Only stop block1 if block2 is itself STOPPED (stable)
+                                if (block2.isStopped) {
+                                    block1.isStopped = true
+                                    if (block1.getCurrentFillColor() != Color.RED) { // Ensure it's not already red
+                                        block1.setFillColor(Color.RED) // Turn red when it lands on another stable block
+                                        Log.d("PhysicsTrace", "Block ${block1.hashCode()} (Y:${block1.y}) - B2B Collision: STOPPED by STABLE block ${block2.hashCode()}, color set to RED.")
+                                    }
+                                    Log.d("PhysicsTrace", "Block ${block1.hashCode()} (Y:${block1.y}) - B2B Collision: STOPPED by STABLE block ${block2.hashCode()}.")
+                                } else {
+                                    // If block2 is not stopped (meaning it's falling), block1 should also continue to fall.
+                                    // We still adjust position to prevent over-penetration, but don't set isStopped.
+                                    Log.d("PhysicsTrace", "Block ${block1.hashCode()} (Y:${block1.y}) - B2B Collision: Adjusting position over falling block ${block2.hashCode()}.")
+                                }
+                            } else {
+                                // block1 is below block2 (meaning block2 is above block1): Push block2 up onto block1
+                                block2.y = block1.bounds.top - block2.size
+
+                                // CRITICAL CHANGE: Only stop block2 if block1 is itself STOPPED (stable)
+                                if (block1.isStopped) {
+                                    block2.isStopped = true
+                                    if (block2.getCurrentFillColor() != Color.RED) { // Ensure it's not already red
+                                        block2.setFillColor(Color.RED) // Turn red when it lands on another stable block
+                                        Log.d("PhysicsTrace", "Block ${block2.hashCode()} (Y:${block2.y}) - B2B Collision: STOPPED by STABLE block ${block1.hashCode()}, color set to RED.")
+                                    }
+                                    Log.d("PhysicsTrace", "Block ${block2.hashCode()} (Y:${block2.y}) - B2B Collision: STOPPED by STABLE block ${block1.hashCode()}.")
+                                } else {
+                                    // If block1 is not stopped (meaning it's falling), block2 should also continue to fall.
+                                    Log.d("PhysicsTrace", "Block ${block2.hashCode()} (Y:${block2.y}) - B2B Collision: Adjusting position over falling block ${block1.hashCode()}.")
+                                }
+                            }
+                        } else { // Resolve horizontally
                             if (block1.bounds.centerX() < block2.bounds.centerX()) {
-                                // block1 is to the left of block2, push block1 left, block2 right
                                 block1.x -= overlapX / 2f
                                 block2.x += overlapX / 2f
                             } else {
-                                // block1 is to the right of block2, push block1 right, block2 left
                                 block1.x += overlapX / 2f
                                 block2.x -= overlapX / 2f
                             }
-                        } else { // Overlap is smaller vertically, resolve by pushing vertically
-                            // Determine which direction to push based on center points
-                            if (block1.bounds.centerY() < block2.bounds.centerY()) {
-                                // block1 is above block2, push block1 up, block2 down
-                                block1.y -= overlapY / 2f
-                                block2.y += overlapY / 2f
-                                // For true stacking, you'd need more complex logic here
-                            } else {
-                                // block1 is below block2, push block1 down, block2 up
-                                block1.y += overlapY / 2f
-                                block2.y -= overlapY / 2f
-                            }
+                            Log.d("PhysicsTrace", "Horizontal push: Block ${block1.hashCode()} and ${block2.hashCode()}.")
                         }
                     }
                 }
             }
         }
+        // 3c. Bubble vs. Square Block Collision
+        // Removed the duplicate bubble collision logic. This section is now the single source.
+        // Ensure `bubblesToRemove` is a class member or passed appropriately.
+        val bubblesToRemove = mutableListOf<Bubble>() // Keep this line if it's a local variable for this function
 
-
-        // Collision: Stopped Square Blocks popping Bubbles
-
-        // Prepare a list for bubbles that need to be removed (pushed or hit by blocks)
-        val bubblesToRemove = mutableListOf<Bubble>()
-
-        // Collision: Stopped Square Blocks popping Bubbles
         Log.d("CollisionDebug", "Checking collision. Number of bubbles: ${bubbles.size}, Number of stopped blocks: ${squareBlocks.count { it.isStopped }}")
-        for (block in squareBlocks) {
-            if (block.isStopped) { // Only check for stopped blocks
-                for (bubble in bubbles) {
-                    // Check for intersection between square block (RectF) and bubble (circle)
-                    // This is a basic AABB-circle collision check.
-                    // More precise: find closest point on rectangle to circle center, then check distance.
+
+        // Iterate over a copy of bubbles to safely modify the original list.
+        val bubblesToProcessForCollision = bubbles.toList()
+        for (block in currentBlocksSnapshot)  {
+            if (block.isStopped) { // Only stopped blocks can pop bubbles
+                for (bubble in bubblesToProcessForCollision) {
                     val closestX = max(block.bounds.left, min(bubble.x, block.bounds.right))
                     val closestY = max(block.bounds.top, min(bubble.y, block.bounds.bottom))
 
@@ -495,12 +465,10 @@ class Game(
                     val distanceY = bubble.y - closestY
                     val distanceSquared = (distanceX * distanceX) + (distanceY * distanceY)
 
-                    Log.d("CollisionDebug", "Bubble ${bubble.hashCode()} (X:${bubble.x}, Y:${bubble.y}, R:${bubble.radius}) vs Block ${block.hashCode()} (Bounds:${block.bounds}). Closest: (${closestX}, ${closestY}). DistSq:${distanceSquared}, R*R:${bubble.radius * bubble.radius}")
-
                     if (distanceSquared < (bubble.radius * bubble.radius)) {
                         // Collision detected!
                         if (bubble.bubbleType != BubbleType.NEGATIVE && bubble.bubbleType != BubbleType.POWER_UP) {
-                            missedBubbles++ // Increment missed count for non-special bubbles
+                            missedBubbles++
                             Log.d("Game", "Bubble popped by square block! Missed: $missedBubbles")
                             if (missedBubbles >= missedBubbleThreshold) {
                                 isGameOver()
@@ -511,6 +479,121 @@ class Game(
                 }
             }
         }
+
+
+        // 4. Removal Phase: Apply all pending removals to the main lists
+
+        // Remove bubbles from the main list
+        if (bubblesToRemove.isNotEmpty()) {
+            bubbles.removeAll(bubblesToRemove.toSet()) // Using `toSet()` can be more efficient for multiple removals
+            redrawListener?.onRedrawRequested()
+        }
+
+        // Remove blocks from the main list (if any were marked for removal)
+        if (blocksToRemove.isNotEmpty()) {
+            squareBlocks.removeAll(blocksToRemove) // Actual removal happens here
+            blocksToRemove.clear() // Clear the list after removal
+            //redrawListener?.onRedrawRequested()
+
+            // --- PLACE "LOSS OF SUPPORT" LOGIC HERE ---
+            // After blocks have been definitively removed, re-evaluate support for remaining blocks.
+            val tolerance =
+                30f // INCREASED TOLERANCE HERE. Start with 5f, then try higher if needed.
+
+
+            var changedStatusInPass = true
+            var passCounter = 0 // Add a counter for passes
+            while (changedStatusInPass) {
+                passCounter++
+                changedStatusInPass = false
+                Log.d("PhysicsTrace", "--- Loss of Support Pass $passCounter ---")
+
+                for (block in squareBlocks) {
+                    val originalIsStopped = block.isStopped
+                    Log.d(
+                        "PhysicsTrace",
+                        "  Checking Block ${block.hashCode()} (Y:${block.y}, isStopped:$originalIsStopped)"
+                    )
+
+                    if (originalIsStopped) { // Only check blocks that were previously stopped
+                        val isOnGround = abs(block.bounds.bottom - gameHeight) < tolerance
+                        Log.d(
+                            "PhysicsTrace",
+                            "    isOnGround check: ${isOnGround} (bottom: ${block.bounds.bottom}, gameHeight: $gameHeight, tolerance: $tolerance)"
+                        )
+
+                        if (!isOnGround) {
+                            var isSupportedByAnotherBlock = false
+                            Log.d(
+                                "PhysicsTrace",
+                                "    Block ${block.hashCode()} is NOT on ground. Checking for other support."
+                            )
+                            for (otherBlock in squareBlocks) {
+                                if (block == otherBlock) continue
+
+                                // Optimize: otherBlock must be below block's center to be a support
+                                if (otherBlock.bounds.top < block.bounds.centerY()) continue
+
+                                val verticalAlignment =
+                                    abs(block.bounds.bottom - otherBlock.bounds.top)
+                                val horizontalOverlap = max(
+                                    0f,
+                                    min(
+                                        block.bounds.right,
+                                        otherBlock.bounds.right
+                                    ) - max(block.bounds.left, otherBlock.bounds.left)
+                                )
+
+                                Log.d(
+                                    "PhysicsTrace",
+                                    "    vs OtherBlock ${otherBlock.hashCode()} (Y:${otherBlock.y}, isStopped:${otherBlock.isStopped}): vertAlign: $verticalAlignment, horizOverlap: $horizontalOverlap"
+                                )
+
+                                // CRITICAL: A supporting block must ALSO be stopped (stable)
+                                if (!otherBlock.isStopped) {
+                                    Log.d(
+                                        "PhysicsTrace",
+                                        "      OtherBlock ${otherBlock.hashCode()} is NOT stopped, cannot provide support."
+                                    )
+                                    continue // If the other block is falling, it cannot provide stable support.
+                                }
+
+                                if (verticalAlignment < tolerance && horizontalOverlap > 0) {
+                                    isSupportedByAnotherBlock = true
+                                    Log.d(
+                                        "PhysicsTrace",
+                                        "      FOUND SUPPORT: Block ${block.hashCode()} supported by ${otherBlock.hashCode()}."
+                                    )
+                                    break // Found stable support, no need to check other blocks
+                                }
+                            }
+
+                            if (!isSupportedByAnotherBlock) {
+                                Log.d(
+                                    "PhysicsTrace",
+                                    "  !!! Block ${block.hashCode()} (Y:${block.y}) LOST SUPPORT. isStopped -> FALSE. Pass:$passCounter !!!"
+                                )
+                                block.isStopped = false
+                                changedStatusInPass = true
+                                // This next log is from your original code, keep it too
+                                Log.d(
+                                    "GameLogic",
+                                    "Block ${block.hashCode()} (Y:${block.y}) lost support and will fall."
+                                )
+                            } else {
+                                Log.d(
+                                    "PhysicsTrace",
+                                    "    Block ${block.hashCode()} REMAINS STOPPED (supported)."
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            Log.d("PhysicsTrace", "--- END LOSS OF SUPPORT CHECK (Total passes: $passCounter) ---")
+        }
+
+
         if (GameModeStates.isSpikeTrapModeActive) {
             val currentTime = System.currentTimeMillis()
 
@@ -582,8 +665,7 @@ class Game(
             } else {
                 isGreenRectangleActive = false
                 rectangleColor = Color.RED // Reset to default color.
-                //TODO add metered rectangle speed as it gets higher it gets slower
-                //TODO revert this back after game over tests
+
                 rectangleRiseSpeed = 0.1f
                 val maxRectangleRiseSpeed = 0.5f
 
@@ -633,7 +715,7 @@ class Game(
         val rectangleRect = RectF(rectangleX, rectangleY, rectangleX + rectangleWidth, rectangleY + rectangleHeight)
 
         // Iterate over a copy to avoid ConcurrentModificationException
-        //TODO fix power up bubbles getting points when hitting rectangle
+
 
         for (bubble in bubbles.toList()) {
             try {
@@ -1013,7 +1095,12 @@ class Game(
         currentBubbleGrowthRate *= 1.30f
         currentBubbleLifespan = (currentBubbleLifespan - 400L).coerceAtLeast(minBubbleLifespan)
 
-
+        if(MainActivity.GameModeStates.isBlockModeActive){
+            var levelConv1=level*8
+            var levelConv2=levelConv1.toLong()
+            FIXED_BLOCK_SPAWN_INTERVAL_MS-=levelConv2
+            println("BSR Block Spawn Interval: $FIXED_BLOCK_SPAWN_INTERVAL_MS")
+        }
         // Enforce upper limit for minBubbleRadius (ensure it doesn't exceed max)
         if (minBubbleRadius > maxAllowedBubbleRadius) {
             minBubbleRadius = maxAllowedBubbleRadius * 0.7f // Or some other reasonable proportion
@@ -1365,15 +1452,27 @@ class Game(
         squareBlocks.add(SquareBlock(x, y, size, fillColor, speed))
     }
     private fun handleSquareBlockTapInternal(tapX: Float, tapY: Float): Boolean {
+        var blockTapEffectVolume: Float = 1.0f
+        // You should iterate over a copy of squareBlocks if 'squareBlocks'
+        // itself is being iterated over elsewhere in the same update cycle
+        // to prevent ConcurrentModificationException.
+        // However, if 'find' doesn't cause issues, this is fine.
         val tappedBlock = squareBlocks.find { it.bounds.contains(tapX, tapY) }
         if (tappedBlock != null) {
-            blocksToRemove.add(tappedBlock) // <--- Block is added to the removal list here
+            blocksToRemove.add(tappedBlock) // Block is added to the removal list here
+            // Update the score when a block is tapped
+            score += 1 * level // Assuming 10 points per block, adjust as needed
+            soundPool.play(blockbreak, blockTapEffectVolume, blockTapEffectVolume, 0, 0, 1f)
+            Log.d("Sound", "Played block tap sound for block ${tappedBlock.hashCode()}.")
+            // --- END NEW ---
+
             // Do not call redrawListener here, it will be called after update
             Log.d("Game", "Square block tapped and added to removal list! Score: $score")
             return true // Indicate that a block was tapped
         }
         return false // No block was tapped
     }
+
     // You'll likely have a similar getBubbles() method for GameView to draw
 
 

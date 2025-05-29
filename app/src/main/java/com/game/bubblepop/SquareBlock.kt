@@ -12,21 +12,31 @@ data class SquareBlock(
     val size: Float,
     val fillColor: Int,
     var speed: Float = 5f,
-    var isStopped: Boolean = false
+    var isStopped: Boolean = false,
+    val defaultFillColor: Int = Color.parseColor("#808080") // Example: A default gray. Use your desired initial color.
 ) {
-    // Paint for the inner fill of the square block
     private val fillPaint = Paint().apply {
-        color = fillColor
+        color = defaultFillColor // Initialize with the default color
         style = Paint.Style.FILL
         isAntiAlias = true
     }
 
-    // Paint for the thick black outline of the square block
+    // Paint for the thick black outline of the square block (remains unchanged)
     private val strokePaint = Paint().apply {
         color = Color.BLACK
         style = Paint.Style.STROKE
         strokeWidth = 12f
         isAntiAlias = true
+    }
+
+    // --- NEW: Method to change the fill color ---
+    fun setFillColor(color: Int) {
+        fillPaint.color = color
+    }
+
+    // --- NEW: Method to get the current fill color (useful for checking) ---
+    fun getCurrentFillColor(): Int {
+        return fillPaint.color
     }
 
     // Property to easily get the bounding box of the square block
