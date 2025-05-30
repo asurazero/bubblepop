@@ -166,6 +166,10 @@ class Game(
     private var blocksToSpawnPerEvent: Int = 1
     private val MAX_BLOCKS_TO_SPAWN_PER_EVENT: Int = 5
 
+    private var blocksToRemove = mutableListOf<SquareBlock>()
+    private val squareBlocksToAdd = mutableListOf<SquareBlock>() // New: for pending additions
+    private val bubblesToAdd = mutableListOf<Bubble>()
+
     init {
         Log.d("MusicSetup", "Initializing audio...")
         // Initialize SoundPool
@@ -279,7 +283,7 @@ class Game(
             // in the Bubble constructor based on the 'x' and 'y' passed above.
         }
 
-        bubbles.add(newBubble)
+        bubblesToAdd.add(newBubble)
     }
 
     var isCyanRectangleActive = false
@@ -312,8 +316,36 @@ class Game(
     fun getSquareBlocks(): List<SquareBlock> {
         return squareBlocks
     }
-    private var blocksToRemove = mutableListOf<SquareBlock>()
+
+    private fun createRandomSquareBlockInstance(): SquareBlock {
+        val size = 200f
+        val x = (Math.random() * (gameWidth - size)).toFloat()
+        val y = -size
+        val fillColor = Color.LTGRAY // <--- Changed this to Light Gray!
+        val speed = 5f + (Math.random() * 5).toFloat()
+        // Pass fillColor to the SquareBlock constructor
+        return SquareBlock(x, y, size, fillColor, speed) // Assuming SquareBlock constructor
+    }
+
+    // Rename this for clarity. It now queues a block for addition.
+    private fun queueRandomSquareBlock() {
+        squareBlocksToAdd.add(createRandomSquareBlockInstance())
+    }
+
+
+    // Queue a bubble for addition
+
     fun update(deltaTime: Long) {
+
+        if (squareBlocksToAdd.isNotEmpty()) {
+            squareBlocks.addAll(squareBlocksToAdd)
+            squareBlocksToAdd.clear()
+        }
+        if (bubblesToAdd.isNotEmpty()) { // <-- ADD THIS SECTION
+            bubbles.addAll(bubblesToAdd)
+            bubblesToAdd.clear()
+        }
+
         timeSinceLastBlockSpawn += deltaTime // Accumulate time
         val currentBlocksSnapshot = squareBlocks.toList()
         // Check if enough time has passed based on the fixed interval
@@ -528,7 +560,10 @@ class Game(
                                 "PhysicsTrace",
                                 "    Block ${block.hashCode()} is NOT on ground. Checking for other support."
                             )
-                            for (otherBlock in squareBlocks) {
+
+
+                            val otherBlocksForCollisionCheck = squareBlocks.toList() // <--- Add this nested snapshot
+                            for (otherBlock in otherBlocksForCollisionCheck) {
                                 if (block == otherBlock) continue
 
                                 // Optimize: otherBlock must be below block's center to be a support
@@ -872,7 +907,17 @@ class Game(
         if (bubbles.isEmpty() && gameActive) {
             levelUp()
         }
+        if (bubblesToRemove.isNotEmpty()) {
+            bubbles.removeAll(bubblesToRemove.toSet())
+            bubblesToRemove.clear()
+        }
+        if (blocksToRemove.isNotEmpty()) {
+            squareBlocks.removeAll(blocksToRemove)
+            blocksToRemove.clear()
+        }
+        // ... and then request redraw
         redrawListener?.onRedrawRequested()
+
         lastUpdateTime = currentTime
 
         appWideGameData.globalScore=score
@@ -1461,7 +1506,7 @@ class Game(
         if (tappedBlock != null) {
             blocksToRemove.add(tappedBlock) // Block is added to the removal list here
             // Update the score when a block is tapped
-            score += 1 * level // Assuming 10 points per block, adjust as needed
+            score += 50 * level // Assuming 10 points per block, adjust as needed
             soundPool.play(blockbreak, blockTapEffectVolume, blockTapEffectVolume, 0, 0, 1f)
             Log.d("Sound", "Played block tap sound for block ${tappedBlock.hashCode()}.")
             // --- END NEW ---

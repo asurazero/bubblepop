@@ -144,8 +144,9 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                 }
             }
             // Get the bubbles list *once* here
-            val bubbles = currentGame.getBubbles()
-            for (bubble in bubbles) {
+
+            val bubblesToDraw = currentGame.getBubbles().toList() // <--- THIS IS THE CHANGE
+            for (bubble in bubblesToDraw) {
                 // Null check for the bubble object
                 if (bubble != null) {
                     val paintToUse = when (bubble.bubbleType) {
@@ -245,7 +246,8 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                 }
             }
             // --- NEW: Draw all square blocks (retrieved from Game) ---
-            currentGame.getSquareBlocks().forEach { block ->
+            val squareBlocksToDraw = currentGame.getSquareBlocks().toList() // <--- ADD THIS SNAPSHOT TOO
+            squareBlocksToDraw.forEach { block ->
                 block.draw(canvas)
             }
 
