@@ -1139,12 +1139,36 @@ class Game(
         currentSpawnInterval = (currentSpawnInterval - 400L).coerceAtLeast(minSpawnInterval)
         currentBubbleGrowthRate *= 1.30f
         currentBubbleLifespan = (currentBubbleLifespan - 400L).coerceAtLeast(minBubbleLifespan)
-
+        //Blocks mode difficulty management
         if(MainActivity.GameModeStates.isBlockModeActive){
-            var levelConv1=level*8
-            var levelConv2=levelConv1.toLong()
-            FIXED_BLOCK_SPAWN_INTERVAL_MS-=levelConv2
-            println("BSR Block Spawn Interval: $FIXED_BLOCK_SPAWN_INTERVAL_MS")
+            if(GameModeStates.gameDifficulty=="Easy"){
+                var spawnRateMax=4000L
+                var levelConv1=level*2
+                var levelConv2=levelConv1.toLong()
+                FIXED_BLOCK_SPAWN_INTERVAL_MS-=levelConv2
+                if(FIXED_BLOCK_SPAWN_INTERVAL_MS<spawnRateMax){
+                    FIXED_BLOCK_SPAWN_INTERVAL_MS=spawnRateMax
+                }
+                println("BSR Block Spawn Interval: $FIXED_BLOCK_SPAWN_INTERVAL_MS")
+            }
+            if(GameModeStates.gameDifficulty=="Normal"){
+                var spawnRateMax=3000L
+                var levelConv1=level*6
+                var levelConv2=levelConv1.toLong()
+                FIXED_BLOCK_SPAWN_INTERVAL_MS-=levelConv2
+                if(FIXED_BLOCK_SPAWN_INTERVAL_MS<spawnRateMax){
+                    FIXED_BLOCK_SPAWN_INTERVAL_MS=spawnRateMax
+                }
+            }
+            if(GameModeStates.gameDifficulty=="Hard") {
+                var spawnRateMax=2000L
+                var levelConv1=level*8
+                var levelConv2=levelConv1.toLong()
+                FIXED_BLOCK_SPAWN_INTERVAL_MS-=levelConv2
+                if(FIXED_BLOCK_SPAWN_INTERVAL_MS<spawnRateMax){
+                    FIXED_BLOCK_SPAWN_INTERVAL_MS=spawnRateMax
+                }
+            }
         }
         // Enforce upper limit for minBubbleRadius (ensure it doesn't exceed max)
         if (minBubbleRadius > maxAllowedBubbleRadius) {

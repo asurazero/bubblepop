@@ -260,9 +260,7 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
             // Update game state and request redraw
             currentGame.update(deltaTime) // Pass deltaTime to game update
 
-            if (currentGame.getBubbles().isNotEmpty() || !currentGame.isGameOver() || GameModeStates.isSpikeTrapModeActive) { // Keep drawing if spikes are active
-                postInvalidateOnAnimation()
-            }
+            postInvalidateOnAnimation()
         }
     }
 
