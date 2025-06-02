@@ -135,7 +135,7 @@ class Game(
     private val rectangleHeight = 2000000f
     private var rectangleX = (screenWidth - rectangleWidth) / 2
     private var rectangleY = screenHeight + 50 // Start below the screen
-    private var rectangleRiseSpeed = 0.1f
+    private var rectangleRiseSpeed = .1f
     private var isRectangleActive = false
     private val rectangleActivationDelay = 5000L // 5 seconds delay after game starts
     private var rectangleActivationTime = System.currentTimeMillis() + rectangleActivationDelay
@@ -169,6 +169,24 @@ class Game(
     private var blocksToRemove = mutableListOf<SquareBlock>()
     private val squareBlocksToAdd = mutableListOf<SquareBlock>() // New: for pending additions
     private val bubblesToAdd = mutableListOf<Bubble>()
+    // Add this new property:
+    private var isRectangleStoppedByLine: Boolean = false
+
+// ---
+
+    // Add these new public functions to your Game class (anywhere after your properties, before update)
+    fun getRedRectangleBounds(): RectF {
+        return RectF(rectangleX, rectangleY, rectangleX + rectangleWidth, rectangleY + rectangleHeight)
+    }
+
+    fun setRedRectangleStoppedByLine(stopped: Boolean) {
+        isRectangleStoppedByLine = stopped
+    }
+
+    fun isRedRectangleCurrentlyActive(): Boolean {
+        // This getter is needed by GameView to know if the rectangle should be checked
+        return isRectangleActive
+    }
 
     init {
         Log.d("MusicSetup", "Initializing audio...")
@@ -336,7 +354,8 @@ class Game(
     // Queue a bubble for addition
 
     fun update(deltaTime: Long) {
-
+        val currentBlocksSnapshot = squareBlocks.toList()
+        println("block mode check ${GameModeStates.isBlockModeActive}")
         if (squareBlocksToAdd.isNotEmpty()) {
             squareBlocks.addAll(squareBlocksToAdd)
             squareBlocksToAdd.clear()
@@ -346,20 +365,21 @@ class Game(
             bubblesToAdd.clear()
         }
 
-        timeSinceLastBlockSpawn += deltaTime // Accumulate time
-        val currentBlocksSnapshot = squareBlocks.toList()
-        // Check if enough time has passed based on the fixed interval
-        if (timeSinceLastBlockSpawn >= FIXED_BLOCK_SPAWN_INTERVAL_MS) { // Use the fixed interval here
-            // Loop to spawn multiple blocks based on blocksToSpawnPerEvent
-            for (i in 0 until blocksToSpawnPerEvent) {
-                addRandomSquareBlock() // Call your existing function to add a block
-            }
-            timeSinceLastBlockSpawn = 0L // Reset the timer for the next spawn event
-        }
-        Log.d("PhysicsTrace", "--- New Frame ---")
+
 
         // 1. Game Mode & Spawning Logic
         if (GameModeStates.isBlockModeActive) {
+            timeSinceLastBlockSpawn += deltaTime // Accumulate time
+
+            // Check if enough time has passed based on the fixed interval
+            if (timeSinceLastBlockSpawn >= FIXED_BLOCK_SPAWN_INTERVAL_MS) { // Use the fixed interval here
+                // Loop to spawn multiple blocks based on blocksToSpawnPerEvent
+                for (i in 0 until blocksToSpawnPerEvent) {
+                    addRandomSquareBlock() // Call your existing function to add a block
+                }
+                timeSinceLastBlockSpawn = 0L // Reset the timer for the next spawn event
+            }
+            Log.d("PhysicsTrace", "--- New Frame ---")
             // These lines related to rectangleRiseSpeed and isRectangleActive seem like remnants or placeholders.
             // If they don't serve a current purpose, you might consider removing them or updating their logic.
             val maxRectangleRiseSpeed = 0.000f // This variable will always be 0.0f given the next line
@@ -370,11 +390,7 @@ class Game(
             isRectangleActive = false // Hardcoding this to false might affect other parts of your game
 
             val currentTime = System.currentTimeMillis()
-            if (GameModeStates.isBlockModeActive && currentTime - lastSquareBlockSpawnTime > squareBlockSpawnInterval) {
-                println("add square block")
-                addRandomSquareBlock()
-                lastSquareBlockSpawnTime = currentTime
-            }
+
         }
 
         // `currentRectangleBounds` is declared but not used. You can remove this line.
@@ -387,9 +403,10 @@ class Game(
         // Square Blocks: Move vertically if not stopped
         // The inner loop for ground collision was removed from here.
         // Ground collision is now handled in its own dedicated section below.
+        Log.d("BlockUpdateDebug", "Processing ${currentBlocksSnapshot.size} blocks this frame.")
         for (block in currentBlocksSnapshot) { // <-- MODIFIED HERE
             if (!block.isStopped) {
-                block.moveVertically()
+                block.moveVertically(deltaTime)
                 Log.d("PhysicsTrace", "Block ${block.hashCode()} (Y:${block.y}) - After moveVertically, isStopped: ${block.isStopped}")
             }
         }
@@ -669,15 +686,97 @@ class Game(
         musicPlayer.startLooping()
         val currentTime = System.currentTimeMillis()
 
-        // Activate the rectangle after the delay
+        // --- UNIFIED RECTANGLE MOVEMENT AND STATE MANAGEMENT ---
+
+// 1. Handle Rectangle Activation (This part remains the same)
+// The rectangle becomes active after a delay, if it's not already active.
         if (!isRectangleActive && currentTime >= rectangleActivationTime) {
             isRectangleActive = true
+            // Log for debugging:
+            Log.d("RectangleDebug", "Rectangle ACTIVATED at $currentTime")
         }
+
+// 2. Main Movement Logic: Only move if active AND not stopped by a line
+        if (isRectangleActive && !isRectangleStoppedByLine) {
+            // Log for debugging:
+            Log.d("RectangleDebug", "DEBUG: deltaTime used: $deltaTime")
+            Log.d("RectangleDebug", "DEBUG: rectangleRiseSpeed used: $rectangleRiseSpeed")
+            Log.d("RectangleDebug", "Rectangle movement block entered. isGreenRectangleActive: $isGreenRectangleActive")
+
+            // If the rectangle is currently in its "green" state:
+            if (isGreenRectangleActive) {
+                // Check if the green state duration is still active
+                if (currentTime < greenRectangleEndTime) {
+                    // Move DOWNWARDS (Y increases) when green.
+                    // Ensure deltaTime is used for frame-rate independence.
+                    rectangleY += rectangleRiseSpeed * (deltaTime / 1000f) // Assuming rectangleRiseSpeed is px/sec
+                    Log.d("RectangleDebug", "Green moving DOWN. Y: $rectangleY")
+                } else {
+                    // Green state has ended: Transition back to the "red" (default active) state
+                    isGreenRectangleActive = false
+                    rectangleColor = Color.RED // Reset to default color (assuming you draw with this color)
+                    Log.d("RectangleDebug", "Green state ENDED. Transitioning to RED.")
+
+                    // Re-calculate rectangleRiseSpeed for the "red" state based on difficulty/modes.
+                    // This is the extensive speed calculation logic you already have.
+                    val maxRectangleRiseSpeedDefault = 0.5f // Default max if no specific mode matches
+                    var currentMaxSpeed = maxRectangleRiseSpeedDefault
+
+                    rectangleRiseSpeed = 0.1f // Base speed when resetting to red state
+
+                    if (MainActivity.GameModeStates.gameDifficulty == "Easy") {
+                        rectangleRiseSpeed = 5.0f + (level * 0.1f)
+                        currentMaxSpeed = 15.0f
+                    } else if (MainActivity.GameModeStates.gameDifficulty == "Normal") {
+                        rectangleRiseSpeed = 10.1f + (level * 0.1f)
+                        currentMaxSpeed = 25.0f // From your previous snippet for Normal
+                    } else if (MainActivity.GameModeStates.gameDifficulty == "Hard") {
+                        rectangleRiseSpeed = 15.0f + (level * 0.2f)
+                        currentMaxSpeed = 30.0f // From your previous snippet for Hard
+                    }
+
+
+
+                    if (GameModeStates.isBlockModeActive) {
+                        currentMaxSpeed = 0.000f // Your existing logic sets speed to 0 in BlockMode
+                        rectangleRiseSpeed = 0.00000f + (level * 0.00f) // This will be 0
+                        // **IMPORTANT:** If you want the rectangle to move in Block Mode, you MUST
+                        // change how its speed is set here, and also ensure `isRectangleActive`
+                        // isn't hardcoded to false elsewhere in `Game.kt` when Block Mode is active.
+                    }
+
+                    // Apply the max speed limit for the calculated speed
+                    if (rectangleRiseSpeed > currentMaxSpeed) {
+                        rectangleRiseSpeed = currentMaxSpeed
+                    }
+                    redrawListener?.onRedrawRequested() // Request redraw after speed/color change
+                    Log.d("RectangleDebug", "New RED state speed: $rectangleRiseSpeed")
+                }
+            } else {
+                // If the rectangle is NOT green (i.e., it's in its "red" or default active state):
+                // It should move UPWARDS (Y decreases).
+                rectangleY -= rectangleRiseSpeed * (deltaTime / 1000f) // Assuming rectangleRiseSpeed is px/sec
+                Log.d("RectangleDebug", "Red moving UP. Y: $rectangleY")
+            }
+        } else {
+            // Log why movement is not happening
+            if (isRectangleActive) {
+                Log.d("RectangleDebug", "Rectangle is ACTIVE but STOPPED by line: $isRectangleStoppedByLine")
+            } else {
+                Log.d("RectangleDebug", "Rectangle is INACTIVE. ActivationTime: $rectangleActivationTime, CurrentTime: $currentTime")
+                // Check for the conflicting `isRectangleActive = false` line mentioned in previous responses.
+            }
+        }
+
+// --- END UNIFIED RECTANGLE MOVEMENT AND STATE MANAGEMENT ---
+
+
 
         if (currentTime - lastSpawnTime > currentSpawnInterval) {
             addRandomBubble()
             lastSpawnTime = currentTime
         }
+
 
 
 
@@ -692,58 +791,6 @@ class Game(
             // Notify the game over listener
             Log.d("Game", "Game Over condition met. Calling gameOverListener.")
             handleGameOver()
-        }
-        // Handle green rectangle behavior
-        if (isGreenRectangleActive) {
-            if (currentTime < greenRectangleEndTime) {
-                rectangleY += rectangleRiseSpeed
-            } else {
-                isGreenRectangleActive = false
-                rectangleColor = Color.RED // Reset to default color.
-
-                rectangleRiseSpeed = 0.1f
-                val maxRectangleRiseSpeed = 0.5f
-
-                if (MainActivity.GameModeStates.gameDifficulty == "Easy") {
-                    rectangleRiseSpeed = 0.1f + (level * 0.01f)
-                    if (rectangleRiseSpeed > maxRectangleRiseSpeed) {
-                        rectangleRiseSpeed = maxRectangleRiseSpeed
-                    }
-                }
-                if (MainActivity.GameModeStates.gameDifficulty == "Normal") {
-                    rectangleRiseSpeed = 0.1f + (level * 0.02f)
-                    val maxRectangleRiseSpeed = 0.3f
-                    if (rectangleRiseSpeed > maxRectangleRiseSpeed) {
-                        rectangleRiseSpeed = maxRectangleRiseSpeed
-                    }
-                }
-                if (MainActivity.GameModeStates.gameDifficulty == "Hard") {
-                    rectangleRiseSpeed = 0.3f + (level * 0.02f)
-                    val maxRectangleRiseSpeed = 0.4f
-                    if (rectangleRiseSpeed > maxRectangleRiseSpeed) {
-                        rectangleRiseSpeed = maxRectangleRiseSpeed
-                    }
-                }
-                if (GameModeStates.isPowerUpModeActive == true){
-                    val maxRectangleRiseSpeed = 1.5f
-                    rectangleRiseSpeed =  1.0f + (level * 0.02f)
-                    if (rectangleRiseSpeed > maxRectangleRiseSpeed) {
-                        rectangleRiseSpeed = maxRectangleRiseSpeed
-                    }
-
-                }
-                if(GameModeStates.isBlockModeActive){
-                    val maxRectangleRiseSpeed = 0.000f
-                    rectangleRiseSpeed =  0.00000f + (level * 0.00f)
-                    if (rectangleRiseSpeed > maxRectangleRiseSpeed) {
-                        rectangleRiseSpeed = maxRectangleRiseSpeed
-                    }
-                }
-                //set normal at 0.1f //4.0 or 2.5 for game over tests
-                redrawListener?.onRedrawRequested()
-            }
-        } else if (isRectangleActive) {
-            rectangleY -= rectangleRiseSpeed
         }
 
         // Handle bubble updates and collision with the rectangle
@@ -922,115 +969,119 @@ class Game(
 
         appWideGameData.globalScore=score
     }
+    fun popBubble(bubble: Bubble) {
+        // Ensure the bubble exists in the current bubbles list before attempting to remove it
+        if (bubbles.remove(bubble)) {
+            when (bubble.bubbleType) {
+                BubbleType.NORMAL -> {
+                    // Calculate score based on difficulty and mode
+                    var baseScore = 1 // Default score per normal bubble
+                    var scoreMultiplier = level
 
+                    if (GameModeStates.gameDifficulty == "Hard") {
+                        scoreMultiplier += 50
+                    }
+                    if (GameModeStates.isSplitModeActive) {
+                        scoreMultiplier += 25 // Additional bonus for split mode
+                    }
+                    if (GameModeStates.isChaosModeActive) {
+                        scoreMultiplier += 10 // Additional bonus for chaos mode
+                    }
+                    score += baseScore * scoreMultiplier
 
-    fun processClick(clickX: Float, clickY: Float, isSplitMode: Boolean) {
-        if (!gameActive) return
-        var bubbleClicked = false
-        var clickHandled = false
+                    // Play pop sound for normal bubbles
+                    soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
 
-        // --- NEW: Check for Square Block Tap First ---
+                    // Handle split mode for normal bubbles
+                    if (GameModeStates.isSplitModeActive && bubble.canSplit) {
+                        val newBubbles = Bubble.createSplitBubbles(bubble)
+                        bubbles.addAll(newBubbles)
+                    }
+
+                    // Activate power-up if the normal bubble contained one
+                    bubble.powerUpType?.let { powerUp ->
+                        // Pass bubble's coordinates if applyPowerUpEffect needs them
+                        applyPowerUpEffect(powerUp, bubble.x, bubble.y)
+                    }
+                }
+                BubbleType.NEGATIVE -> {
+                    if (missedBubbles > 0) {
+                        missedBubbles--
+                        soundPool.play(coinRingSoundId, 1f, 1f, 0, 0, 1f) // Play coin ring sound
+                        rectangleY += negativeBubbleDescentAmount // Move the rectangle down
+                    }
+                    score = (score - 1).coerceAtLeast(0) // Decrease score, ensure it doesn't go below 0
+                }
+                BubbleType.POWER_UP -> {
+                    // Power-up bubbles are handled by their powerUpType,
+                    // but you might still want to add a base score for popping them
+                    score += 5 // Example score for power-up bubble
+                    soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
+                    bubble.powerUpType?.let { powerUp ->
+                        // Pass bubble's coordinates for power-up activation
+                        applyPowerUpEffect(powerUp, bubble.x, bubble.y)
+                    }
+                }
+            }
+
+            // After popping, check if all bubbles are cleared for level up
+            if (bubbles.isEmpty()) {
+                levelUp()
+            }
+            redrawListener?.onRedrawRequested() // Request redraw after state change
+        }
+    }
+
+    fun processClick(clickX: Float, clickY: Float, isSplitMode: Boolean): Bubble? { // Changed return type to Bubble?
+        if (!gameActive) return null // Return null if game is not active
+
+        // Check for Square Block Tap First
         if (handleSquareBlockTapInternal(clickX, clickY)) {
-            clickHandled = true
-            // No 'return' here, so flow continues, but subsequent 'if (!clickHandled)'
-            // blocks will prevent other items from being processed if a block was tapped.
+            return null // Consume the click if a block was tapped, no bubble popped
         }
 
-
-        println("split mode: $isSplitMode")
         // Check for negative bubble click first
         val negativeBubble = bubbles.find { it.isClicked(clickX, clickY) && it.bubbleType == BubbleType.NEGATIVE }
         negativeBubble?.let {
-            bubbleClicked = true;
-            if (missedBubbles > 0) {
-                missedBubbles--
-                // missedBubbleChangeListener?.onMissedBubbleCountChanged(missedBubbles) // Fixme: removed listener
-                Log.d("Game", "Clicked -1 bubble! Missed count reduced to $missedBubbles")
-                soundPool.play(coinRingSoundId, 1f, 1f, 0, 0, 1f) // Play coin ring sound  Fixme: removed soundpool
-                rectangleY += negativeBubbleDescentAmount // Move the rectangle down
-            } else {
-                Log.d("Game", "Clicked -1 bubble! Missed count already at 0.")
-            }
-            bubbles.remove(it)
-            redrawListener?.onRedrawRequested()
-            return  // Important:  Only pop one bubble per click
+            popBubble(it) // Use the popBubble function
+            return it  // Return the popped negative bubble
         }
 
         // If no negative bubble was clicked, check for power-up bubble
         val powerUpBubble = bubbles.find { it.isClicked(clickX, clickY) && it.bubbleType == BubbleType.POWER_UP }
         powerUpBubble?.let {
-            bubbleClicked = true;
-            it.powerUpType?.let { type ->
-                Log.d("Game", "Power-up bubble clicked! Type: $type")
-                applyPowerUpEffect(type, it.x, it.y)
-                bubbles.remove(it)
-                // soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
-                redrawListener?.onRedrawRequested()
-                return // Exit after handling power-up
-            }
+            popBubble(it) // Use the popBubble function
+            return it // Return the popped power-up bubble
         }
 
         // If no negative or power-up bubble was clicked, handle normal bubbles
         val clickedNormalBubbles = bubbles.filter { it.isClicked(clickX, clickY) && it.bubbleType == BubbleType.NORMAL }
 
         if (clickedNormalBubbles.isNotEmpty()) {
-            bubbleClicked = true;
-            val removedCount = clickedNormalBubbles.size
-            bubbles.removeAll(clickedNormalBubbles)
-            if (MainActivity.GameModeStates.gameDifficulty=="Easy"){
-                score += removedCount * level
-            }
-            if (MainActivity.GameModeStates.gameDifficulty=="Normal"){
-                score += removedCount * level
-            }
-            if (MainActivity.GameModeStates.gameDifficulty=="Hard"||
-                MainActivity.GameModeStates.isSplitModeActive==true||
-                MainActivity.GameModeStates.isChaosModeActive==true){
-                var scoreBooster=50
-                if (MainActivity.GameModeStates.gameDifficulty=="Hard"){
-                score += removedCount * (level+scoreBooster)
-                }
-                if (MainActivity.GameModeStates.isSplitModeActive==true){
-                    scoreBooster+=15
-                    score += removedCount * (level+scoreBooster)
-                }
-                if (MainActivity.GameModeStates.isChaosModeActive==true){
-                    scoreBooster+=10
-                    score += removedCount * (level+scoreBooster)
-                }
-
-            }
-
-
-
-            soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
-            if (isSplitModeActive) { //check if split mode is active.
-                for (poppedBubble in clickedNormalBubbles) {
-                    if (poppedBubble.canSplit) {
-                        val newBubbles = Bubble.createSplitBubbles(poppedBubble)
-                        bubbles.addAll(newBubbles)
-                    }
-                }
-            }
-            if (bubbles.isEmpty()) {
-                levelUp()
+            val firstPoppedBubble = clickedNormalBubbles.first() // Get the first popped bubble to return
+            for (bubble in clickedNormalBubbles) {
+                popBubble(bubble) // Use the popBubble function for each
             }
             redrawListener?.onRedrawRequested()
+            return firstPoppedBubble // Return one of the popped normal bubbles
         }
 
-        if (!bubbleClicked && isBombActive) {
+        // Original bomb handling remains outside as it's not a bubble pop
+        if (isBombActive) {
             // Check if the user clicked near the bomb
             val distance =
                 sqrt(Math.pow((clickX - bombX).toDouble(), 2.0) + Math.pow((clickY - bombY).toDouble(), 2.0))
             if (distance < bombRadius) {
                 setBombStopped(true) //set the bomb stopped
-                popAdjacentBubbles()
+                popAdjacentBubbles() // This will now use the new popBubble internally
                 setBombActive(false)
                 redrawListener?.onRedrawRequested()
-                return
+                return null // Bomb action doesn't return a specific bubble
             }
         }
+        return null // No bubble was clicked or handled
     }
+
 
     private var isBombActive = false
     private var isBombStopped = false
@@ -1038,7 +1089,7 @@ class Game(
     private var isGreenRectangleActive = false
     private var greenRectangleEndTime: Long = 0
     private val greenRectangleDuration = 5000L // 5 seconds duration
-    private val greenRectangleDescentSpeed = 0.1f // Slower descent speed
+    private val greenRectangleDescentSpeed = 10.0f // Slower descent speed
     var rectangleColor: Int = Color.RED  // Default color
     private var isSlowTimeActive = false
     private var slowTimeEndTime: Long = 0
@@ -1299,89 +1350,26 @@ class Game(
         gameOverListener?.onGameOver(isNewHighScore, score)
         gameActive = false
     }
+    // This function needs to be updated to use popBubble for consistency
     fun popAdjacentBubbles() {
-        if (isBombStopped && isBombActive) {
-            Log.d("Game", "popAdjacentBubbles() called. Bomb at ($bombX, $bombY) with radius $bombRadius")
-            Log.d("Game", "Number of bubbles: ${bubbles.size}")
-            val bubblesToPop = mutableListOf<Bubble>()
-
-            // Iterate through a copy of the bubbles list to avoid ConcurrentModificationException
-            for (bubble in bubbles.toList()) {
-                try {
-                    val distance = sqrt((bubble.x - bombX).pow(2) + (bubble.y - bombY).pow(2))
-                    Log.d("Game", "Checking bubble ${bubble.id} at (${bubble.x}, ${bubble.y}) with radius ${bubble.radius}, distance to bomb: $distance")
-                    if (distance < bombRadius + bubble.radius) {
-                        bubblesToPop.add(bubble)
-                        Log.d("Game", "Bomb colliding with bubble ${bubble.id}")
-                    }
-                } catch (e: Exception) {
-                    Log.e("Game", "Error while checking bubble ${bubble.id}: ${e.message}")
-                    // Optionally handle the error, e.g., remove the problematic bubble
-                    // bubbles.remove(bubble)
-                }
-            }
-
-            val normalBubblesToRemove = bubblesToPop.filter { it.bubbleType == BubbleType.NORMAL }
-            if (normalBubblesToRemove.isNotEmpty()) {
-                val removedCount = normalBubblesToRemove.size
-                Log.d("Game", "Popping $removedCount normal bubbles.")
-                try {
-                    bubbles.removeAll(normalBubblesToRemove)
-                    if (removedCount > 0) {
-                        score += removedCount * level
-                        soundPool.play(popSoundId, 1f, 1f, 0, 0, 1f)
-                        // Level up is checked after all bubbles are processed
-                    } else {
-                        Log.d("Game", "No normal bubbles to pop.")
-                    }
-                } catch (e: Exception) {
-                    Log.e("Game", "Error removing normal bubbles: ${e.message}")
-                    val remainingBubbles = bubbles.toMutableList()
-                    remainingBubbles.removeAll(normalBubblesToRemove)
-                    bubbles = remainingBubbles
-                }
-            }
-
-            val powerUpsToRemove = bubblesToPop.filter { it.bubbleType == BubbleType.POWER_UP }
-            for (powerUp in powerUpsToRemove) {
-                try {
-                    powerUp.powerUpType?.let { type ->
-                        Log.d("Game", "Bomb triggered power-up: $type at x=${powerUp.x}, y=${powerUp.y}")
-                        applyPowerUpEffect(type, powerUp.x, powerUp.y)
-                    }
-                } catch (e: Exception) {
-                    Log.e("Game", "Error applying power-up effect for bubble ${powerUp.id}: ${e.message}")
-                }
-            }
-            try {
-                bubbles.removeAll(powerUpsToRemove) // Remove power-ups after applying effect
-            } catch (e: Exception) {
-                Log.e("Game", "Error removing power-up bubbles: ${e.message}")
-                val remainingBubbles = bubbles.toMutableList()
-                remainingBubbles.removeAll(powerUpsToRemove)
-                bubbles = remainingBubbles
-            }
-
-            val negativeBubblesToRemove = bubblesToPop.filter { it.bubbleType == BubbleType.NEGATIVE }
-            try {
-                bubbles.removeAll(negativeBubblesToRemove)
-            } catch (e: Exception) {
-                Log.e("Game", "Error removing negative bubbles: ${e.message}")
-                val remainingBubbles = bubbles.toMutableList()
-                remainingBubbles.removeAll(negativeBubblesToRemove)
-                bubbles = remainingBubbles
-            }
-
-            // Reset bomb state after attempting to pop
-            isBombActive = false
-            isBombStopped = false // Ensure bomb stopped is also reset
-            redrawListener?.onRedrawRequested()
-
-            // Check for level up after all bubbles have been processed
-            if (bubbles.isEmpty() && gameActive) {
-                levelUp()
+        val bubblesToPop = mutableListOf<Bubble>()
+        for (bubble in bubbles) {
+            val distance = sqrt(
+                Math.pow((bubble.x - bombX).toDouble(), 2.0) +
+                        Math.pow((bubble.y - bombY).toDouble(), 2.0)
+            )
+            if (distance < bombRadius + bubble.radius) { // Check if bubble is within bomb radius
+                bubblesToPop.add(bubble)
             }
         }
+        for (bubble in bubblesToPop) {
+            popBubble(bubble) // Use the new popBubble function
+        }
+        // No need for bubbles.removeAll(bubblesToPop) here as popBubble handles removal
+        // No need for score updates here as popBubble handles it
+        // No need for sound here as popBubble handles it
+        // No need for level up check here as popBubble handles it
+        redrawListener?.onRedrawRequested()
     }
     fun isPointInsideBomb(x: Float, y: Float): Boolean {
         return if (isBombActive) {
@@ -1519,6 +1507,8 @@ class Game(
         val speed = 5f + (Math.random() * 5).toFloat()
         // Pass fillColor to the SquareBlock constructor
         squareBlocks.add(SquareBlock(x, y, size, fillColor, speed))
+        Log.d("BlockSpawnDebug", "SquareBlocks count: ${squareBlocks.size}. New block added. Last block Y: ${squareBlocks.lastOrNull()?.y}")
+
     }
     private fun handleSquareBlockTapInternal(tapX: Float, tapY: Float): Boolean {
         var blockTapEffectVolume: Float = 1.0f

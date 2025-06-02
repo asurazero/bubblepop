@@ -55,49 +55,7 @@ class GamePlay : AppCompatActivity(), Game.MissedBubbleChangeListener,
         gameOverTextView.visibility = View.GONE // Initially hide the game over text
         continueMessageTextView.visibility = View.GONE
 
-        gameView.setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    if (!game.isGameActive()) {
-                        if (continueMessageTextView.visibility == View.VISIBLE) {
-                            continueMessageTextView.visibility = View.GONE
-                            endGameTextView.visibility = View.GONE
-                            game.startMusic()
-                            game.setGameActive(true)
-                            gameView.invalidate()
-                            return@setOnTouchListener true
-                        } else if (isReadyToEnd) { // Check the 'isReadyToEnd' flag
-                            val resultIntent = Intent()
-                            resultIntent.putExtra("finalScore", localScore)
-                            setResult(RESULT_OK, resultIntent)
-                            Log.d("GameOverFlow", "Finishing GamePlay activity with score: $localScore")
-                            finish()
-                            return@setOnTouchListener true
-                        } else if (!adShown) { //show ad only once
-                            endGameOnAdDismiss = true
-                            // This is where you would typically show an ad
-                            // For now, let's just simulate ad dismissal after a short delay
-                            gameView.postDelayed({
-                                // Simulate ad dismissal actions
-                                if (endGameOnAdDismiss) {
-                                    isReadyToEnd = true
-                                    gameView.invalidate() // Trigger redraw to update touch logic
-                                    Log.d("GamePlay", "Simulated ad dismissed, isReadyToEnd set to true")
-                                }
-                            }, 1000) // 1 second delay
-                            return@setOnTouchListener true
-                        }
-                    } else if (game.isGameActive()) {
-                        game.processClick(event.x, event.y, isSplitModeActive)
-                        localScore = game.getScore() // Get the score here!
-                        gameView.invalidate()
-                        return@setOnTouchListener true
-                    }
-                    return@setOnTouchListener false
-                }
-                else -> return@setOnTouchListener false
-            }
-        }
+
 
         endGameTextView.setOnClickListener {
             isGameOver = true // Set the flag when game over occurs.
@@ -113,8 +71,8 @@ class GamePlay : AppCompatActivity(), Game.MissedBubbleChangeListener,
 
     override fun onGameOver(isNewHighScore: Boolean, score: Int) {
         runOnUiThread {
-            isGameOver = true // Set the flag when game over occurs.
-            isReadyToEnd = false // Reset the flag when game over starts
+            isGameOver = true
+            isReadyToEnd = false
             GameModeStates.gameover = true
             println(score)
             println(Game.appWideGameData.globalScore)
@@ -129,7 +87,18 @@ class GamePlay : AppCompatActivity(), Game.MissedBubbleChangeListener,
             gameOverTextView.visibility = View.VISIBLE
             continueMessageTextView.visibility = View.GONE
             gameView.invalidate() // Redraw to show the game over text.
-            isReadyToEnd = true // Set the flag after UI updates are complete
+
+            // --- ADD THIS CLICK LISTENER ---
+            gameOverTextView.setOnClickListener {
+                Log.d("GamePlay", "Game Over screen clicked! Finishing activity to return to Main Menu.")
+                val resultIntent = Intent()
+                resultIntent.putExtra("finalScore", localScore)
+                setResult(RESULT_OK, resultIntent)
+                finish() // This will return to MainActivity and trigger onActivityResult
+            }
+            // --- END ADDITION ---
+
+            isReadyToEnd = true
         }
         println("  Game Over in Activity! Score: $score, New High Score: $isNewHighScore  ")
     }

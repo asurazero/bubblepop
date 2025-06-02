@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         var isOrbitalModeActive = false
         var isSpikeTrapModeActive = false
         var isBlockModeActive=false
+        var isDrawModeActive=false
         var gameDifficulty = "Normal"
         var unlockedMutators = mutableSetOf<String>("No Mutator")
         var unlockedForTesting = mutableSetOf("No Mutator", "Split", "Chaos")
@@ -106,7 +107,8 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         8 to "PowerUp",
         11 to "Orbit",
         14 to "Spikes",
-        17 to "Blocks"
+        17 to "Blocks",
+        20 to "Draw Mode"
     )
     private val handler = Handler(Looper.getMainLooper())
     private var isLevelUpInProgress = false //track level up
