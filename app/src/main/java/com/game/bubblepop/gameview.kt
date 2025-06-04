@@ -13,6 +13,9 @@ import androidx.media3.common.util.Log // Using androidx.media3.common.util.Log
 import kotlin.math.abs // Correct import for abs
 import kotlin.math.sqrt // Correct import for sqrt
 import android.graphics.PathMeasure // Correct import for PathMeasure
+import android.media.AudioManager
+import android.media.SoundPool
+import android.os.Build
 import com.game.bubblepop.MainActivity.GameModeStates
 import kotlin.math.*
 
@@ -65,7 +68,76 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
 
     // --- End Ink Drawing Mutator Variables ---
 
+    // --- NEW: Turret Mode Variables ---
+    var isTurretModeActive: Boolean = false // This will be set from your settings
+    private val turretBaseRadius = 50f
+    private val cannonLength = 150f
+    private val cannonThickness = 20f
+    private val turretColor = Color.DKGRAY
+    private val cannonColor = Color.GRAY
+    private val projectileColor = Color.GREEN
+    private val projectileRadius = 15f
+    private val projectileSpeed = -800f // Pixels per second, negative for upwards
 
+    // --- NEW: Paints for Turret Outlines ---
+    private val turretBaseStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.BLACK
+        style = Paint.Style.STROKE
+        strokeWidth = 8f // Thick black outline for the turret base
+    }
+    private val cannonStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.BLACK
+        style = Paint.Style.STROKE
+        strokeWidth = cannonThickness + 4f // Slightly thicker than the cannon fill for a clear outline
+        strokeCap = Paint.Cap.ROUND
+    }
+
+    // --- NEW: Cannon Rotation Variables ---
+    private var currentCannonAngleDegrees: Float = -90f // Initial angle: straight up (-90 degrees from positive X-axis)
+    private var targetCannonAngleDegrees: Float = -90f // Target angle: straight up
+    private val cannonRotationSpeedDegreesPerSecond: Float = 360f // How fast the cannon rotates (e.g., 360 degrees per second)
+    // --- End Turret Mode Variables ---
+    // --- End Turret Mode Variables ---
+    private val projectiles = mutableListOf<Projectile>() // List to hold active projectiles
+
+    private val projectileSpeedMagnitude = 800f
+    // --- NEW: Ammo Counter Variables ---
+    var currentAmmo: Float = 10f // Starting ammo level
+    val maxAmmo: Float = 10f // Maximum ammo capacity
+    val ammoRegenRatePerSecond: Float = 1.0f // Ammo gained per second (e.g., 1 ammo per second)
+    val ammoDepletionPerShot: Float = 1f // Ammo depleted per shot
+    private val ammoBarBackgroundPaint = Paint().apply {
+        color = Color.parseColor("#FF616161") // Darker gray for background
+        style = Paint.Style.FILL
+    }
+    private val ammoBarFillPaint = Paint().apply {
+        color = Color.parseColor("#FF4CAF50") // Green for fill
+        style = Paint.Style.FILL
+    }
+    private val ammoBarBorderPaint = Paint().apply {
+        color = Color.BLACK // Black border
+        style = Paint.Style.STROKE
+        strokeWidth = 4f
+    }
+    private val ammoTextPaint = Paint().apply {
+        color = Color.WHITE // White text for visibility
+        textSize = 30f // Adjust text size as needed
+        textAlign = Paint.Align.CENTER
+    }
+    // --- NEW: Bar dimensions as member variables for consistent access ---
+    private val inkBarHeight = 40f
+    private val inkBarMargin = 20f
+    private val ammoBarHeight = 40f
+    private val ammoBarMargin = 20f
+    // --- End NEW Bar dimensions ---
+
+
+    // --- End Turret Mode Variables ---
+
+    // --- NEW: Sound Variables ---
+    private lateinit var soundPool: SoundPool
+    private var shootSoundId: Int = 0
+    // --- End Sound Variables ---
     //Other Game modes
     var isSplitModeActive = false
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -92,24 +164,57 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
 
     init {
         gameContext = context
+        // NEW: Initialize SoundPool
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            soundPool = SoundPool.Builder().setMaxStreams(5).build()
+        } else {
+            @Suppress("DEPRECATION")
+            soundPool = SoundPool(5, AudioManager.STREAM_MUSIC, 0)
+        }
+        // NEW: Load the sound effect (replace R.raw.shoot_sound with your actual sound resource ID)
+        // You will need to add a sound file (e.g., shoot_sound.wav or .mp3) to your res/raw/ directory.
+        // For example, if your sound file is named 'shoot_sound.mp3', it should be in `res/raw/shoot_sound.mp3`
+        // and you would reference it as `R.raw.shoot_sound`.
+        try {
+            shootSoundId = soundPool.load(context, R.raw.boom, 1) // Assuming R.raw.shoot_sound exists
+        } catch (e: Exception) {
+            Log.e("GameView", "Error loading sound: ${e.message}")
+            // Handle the case where the sound resource is not found or cannot be loaded
+            // Perhaps disable sound effects or use a fallback
+        }
     }
 
     override fun onAttachedToWindow() {
         if(MainActivity.GameModeStates.isSplitModeActive==true){
             isSplitModeActive=true
         }else isSplitModeActive=false
-
+        // --- NEW: Link Turret Mode state from MainActivity ---
+        if (GameModeStates.isTurretModeActive) {
+            isTurretModeActive = true
+        } else {
+            isTurretModeActive = false
+        }
         super.onAttachedToWindow()
         game.redrawListener = this
+
     }
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         game.redrawListener = null
+        soundPool.release()
     }
 
     override fun onRedrawRequested() {
         invalidate()
+    }
+    override fun onReplenishAmmo() { // NEW: Implement the new method
+        currentAmmo = maxAmmo
+        invalidate() // Request redraw to update the ammo bar
+    }
+    override fun onReplenishHalfAmmo() { // NEW: Implement the new method for half ammo
+        currentAmmo = (currentAmmo + maxAmmo / 2).coerceAtMost(maxAmmo)
+        invalidate() // Request redraw to update the ammo bar
     }
 
     private val normalPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -330,17 +435,8 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                 }
             }
             drawnLines.removeAll(linesToRemove) // Remove fully faded lines
-
-
-            // Draw score and level
-            canvas.drawText("Score: ${currentGame.getScore()}", 50f, 100f, scorePaint)
-            canvas.drawText("Level: ${currentGame.getLevel()}", 50f, 150f, levelPaint)
-            canvas.drawText("Missed: ${currentGame.getMissedBubbles()}", 50f, 200f, scorePaint)
-
-            // --- NEW: Draw the Ink Bar ---
             if (isDrawingModeActive) { // Only draw the ink bar if drawing mode is active
-                val inkBarHeight = 40f
-                val inkBarMargin = 20f
+                // Use member variables for dimensions
                 val inkBarWidth = width - (2 * inkBarMargin)
                 val inkBarTop = inkBarMargin // Position at the top
 
@@ -359,8 +455,106 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
                 val inkText = "Ink: $inkPercentage%"
                 canvas.drawText(inkText, width / 2f, inkBarTop + inkBarHeight / 2f + inkTextPaint.textSize / 3, inkTextPaint)
             }
+            // -   -- NEW: Draw turret and projectiles only if turret mode is active ---
+            if (isTurretModeActive) {
+                drawTurret(canvas)
+                drawProjectiles(canvas)
+                // Use member variables for dimensions
+                val ammoBarWidth = width - (2 * ammoBarMargin)
+                val ammoBarTop = if (isDrawingModeActive) {
+                    inkBarMargin + inkBarHeight + ammoBarMargin // Below ink bar + margin
+                } else {
+                    ammoBarMargin // At top margin if ink bar isn't active
+                }
+                // Background of the ammo bar
+                canvas.drawRect(ammoBarMargin, ammoBarTop, ammoBarMargin + ammoBarWidth, ammoBarTop + ammoBarHeight, ammoBarBackgroundPaint)
+
+                // Fill of the ammo bar based on current ammo
+                val fillWidth = ammoBarWidth * (currentAmmo / maxAmmo)
+                canvas.drawRect(ammoBarMargin, ammoBarTop, ammoBarMargin + fillWidth, ammoBarTop + ammoBarHeight, ammoBarFillPaint)
+
+                // Border of the ammo bar
+                canvas.drawRect(ammoBarMargin, ammoBarTop, ammoBarMargin + ammoBarWidth, ammoBarTop + ammoBarHeight, ammoBarBorderPaint)
+
+                // Optional: Draw ammo percentage text
+                val ammoPercentage = (currentAmmo / maxAmmo * 100).toInt()
+                val ammoText = "Ammo: $ammoPercentage%"
+                canvas.drawText(ammoText, width / 2f, ammoBarTop + ammoBarHeight / 2f + ammoTextPaint.textSize / 3, ammoTextPaint)
+
+            }
 
 
+            // Draw score and level
+            canvas.drawText("Score: ${currentGame.getScore()}", 50f, 100f, scorePaint)
+            canvas.drawText("Level: ${currentGame.getLevel()}", 50f, 150f, levelPaint)
+            canvas.drawText("Missed: ${currentGame.getMissedBubbles()}", 50f, 200f, scorePaint)
+
+            // --- NEW: Draw the Ink Bar ---
+
+            // Update game state and request redraw
+            // --- NEW: Update existing projectiles and fire new ones if turret mode is active ---
+            // This logic is moved here from the previous `update` method, as your `GameView` calls `game.update`.
+            // The `game.update` method will then call `game.redrawListener?.onRedrawRequested()` which triggers `invalidate()`.
+            // Update game state and request redraw
+            // --- Update existing projectiles (removed automatic firing logic from here) ---
+            // Update game state and request redraw
+            // --- Update existing projectiles and handle collisions ---
+            val projectilesToRemove = mutableListOf<Projectile>()
+            val bubblesToPopByProjectile = mutableSetOf<Bubble>() // Use a set to avoid duplicate popping
+
+            for (projectile in projectiles) {
+                projectile.update(deltaTime)
+
+                // Check for collision with bubbles if turret mode is active
+                if (isTurretModeActive) {
+                    val bubblesSnapshot = currentGame.getBubbles().toList() // Get a snapshot to iterate safely
+                    for (bubble in bubblesSnapshot) {
+                        val distance = sqrt(
+                            (projectile.x - bubble.x).pow(2) + (projectile.y - bubble.y).pow(2)
+                        )
+                        if (distance < projectile.radius + bubble.radius) {
+                            // Collision detected!
+                            bubblesToPopByProjectile.add(bubble)
+                            projectilesToRemove.add(projectile) // Mark projectile for removal
+                            break // Only pop one bubble per projectile per frame
+                        }
+                    }
+                }
+
+                if (projectile.isOffScreen(width, height)) { // Pass screen dimensions to isOffScreen
+                    projectilesToRemove.add(projectile)
+                }
+            }
+            projectiles.removeAll(projectilesToRemove)
+
+            // Pop bubbles that collided with projectiles
+            for (bubble in bubblesToPopByProjectile) {
+                currentGame.popBubble(bubble)
+            }
+            // --- End NEW Turret Update ---
+            // --- NEW: Smoothly rotate the cannon ---
+            if (isTurretModeActive) {
+                val angleDiff = targetCannonAngleDegrees - currentCannonAngleDegrees
+                // Normalize angleDiff to be between -180 and 180 for shortest path
+                val normalizedAngleDiff = (angleDiff + 540) % 360 - 180 // (x + 360*N + 180) % 360 - 180
+                val maxRotationThisFrame = cannonRotationSpeedDegreesPerSecond * (deltaTime / 1000f)
+
+                val rotationAmount = if (abs(normalizedAngleDiff) <= maxRotationThisFrame) {
+                    normalizedAngleDiff
+                } else if (normalizedAngleDiff > 0) {
+                    maxRotationThisFrame
+                } else {
+                    -maxRotationThisFrame
+                }
+
+                currentCannonAngleDegrees += rotationAmount
+                // Ensure currentCannonAngleDegrees stays within 0 to 360
+                currentCannonAngleDegrees = (currentCannonAngleDegrees + 360) % 360
+
+                // --- NEW: Regenerate ammo ---
+                currentAmmo = (currentAmmo + ammoRegenRatePerSecond * (deltaTime / 1000f)).coerceAtMost(maxAmmo)
+            }
+            // --- End NEW Cannon Rotation ---
             // Update game state and request redraw
             currentGame.update(deltaTime) // Pass deltaTime to game update
 
@@ -372,7 +566,22 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
         Log.d("GameView", "TOP_LEVEL_TOUCH_EVENT: Action ${event.actionToString()}")
         game?.let { currentGame ->
             val currentTime = System.currentTimeMillis()
-
+            if (isTurretModeActive) {
+                if (event.action == MotionEvent.ACTION_DOWN) {
+                    // Only fire if there is ammo
+                    if (currentAmmo >= ammoDepletionPerShot) {
+                        val targetX = event.x
+                        val targetY = event.y
+                        fireProjectile(targetX, targetY)
+                        currentAmmo -= ammoDepletionPerShot // Deplete ammo
+                        invalidate() // Redraw to show the new projectile and updated ammo bar
+                        return true // Consume the event
+                    } else {
+                        Log.d("GameView", "Not enough ammo to fire!")
+                        // Optionally, play a "no ammo" sound or display a message
+                    }
+                }
+            }
             // --- NEW: Automatically exit drawing mode if ink is 0 ---
             // This ensures that even if isDrawingModeActive was left true,
             // any new tap (ACTION_DOWN) when ink is 0 will correctly fall
@@ -598,6 +807,106 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), G
         }
 
         game.redrawListener?.onRedrawRequested()
+    }
+    // --- NEW: Draws the turret base and cannon on the canvas. ---
+    /**
+     * Draws the turret base and cannon on the canvas.
+     * @param canvas The canvas to draw on.
+     */
+    // --- NEW: Draws the turret base and cannon on the canvas. ---
+    /**
+     * Draws the turret base and cannon on the canvas.
+     * @param canvas The canvas to draw on.
+     */
+    private fun drawTurret(canvas: Canvas) {
+        val centerX = width / 2f
+        val baseY = height - turretBaseRadius // Turret base sits at the bottom
+
+        // Draw turret base (circle fill)
+        paint.color = turretColor
+        canvas.drawCircle(centerX, baseY, turretBaseRadius, paint)
+        // Draw turret base (circle outline)
+        canvas.drawCircle(centerX, baseY, turretBaseRadius, turretBaseStrokePaint)
+
+
+        // Cannon drawing
+        canvas.save() // Save the current canvas state
+        canvas.translate(centerX, baseY) // Move origin to the pivot point (center of the turret base)
+
+        // Rotate the canvas. The cannon is drawn pointing upwards (negative Y).
+        // atan2 gives angle from positive X. So, if atan2 gives 0 (right), we need to rotate 90 degrees clockwise from straight up.
+        // If atan2 gives -90 (up), we need to rotate 0 degrees from straight up.
+        // This means we need to rotate by (currentCannonAngleDegrees + 90) degrees.
+        canvas.rotate(currentCannonAngleDegrees + 90f)
+
+        // Draw cannon (thick line fill)
+        paint.color = cannonColor
+        paint.strokeWidth = cannonThickness
+        // Draw from (0,0) (which is now centerX, baseY) up along the negative Y axis
+        canvas.drawLine(0f, 0f, 0f, -cannonLength, paint)
+
+        // Draw cannon (thick line outline)
+        cannonStrokePaint.strokeWidth = cannonThickness + 4f // Ensure outline is visible
+        canvas.drawLine(0f, 0f, 0f, -cannonLength, cannonStrokePaint)
+
+        canvas.restore() // Restore the canvas state to remove the translation and rotation
+    }
+
+    // --- NEW: Adds a new projectile to the game. ---
+    /**
+     * Adds a new projectile to the game.
+     */
+    // --- Adds a new projectile to the game, firing towards targetX, targetY. ---
+    /**
+     * Adds a new projectile to the game, firing towards the specified target coordinates.
+     * @param targetX The X coordinate of the tap.
+     * @param targetY The Y coordinate of the tap.
+     */
+    private fun fireProjectile(targetX: Float, targetY: Float) {
+        val turretCenterX = width / 2f
+        val turretBaseY = height - turretBaseRadius
+
+        // Calculate the actual start point of the projectile at the tip of the rotated cannon
+        val angleRadians = Math.toRadians(currentCannonAngleDegrees.toDouble()).toFloat()
+        val projectileStartX = turretCenterX + (cannonLength * cos(angleRadians))
+        val projectileStartY = turretBaseY + (cannonLength * sin(angleRadians))
+
+        // Calculate direction vector from the *new* projectile start point to the target
+        val dirX = targetX - projectileStartX
+        val dirY = targetY - projectileStartY
+
+        // Calculate magnitude (length) of the direction vector
+        val magnitude = sqrt(dirX * dirX + dirY * dirY)
+
+        // Update target cannon angle
+        if (magnitude > 0) { // Avoid division by zero if tap is exactly at turret center
+            targetCannonAngleDegrees = Math.toDegrees(atan2(dirY, dirX).toDouble()).toFloat()
+        }
+
+        // Normalize the direction vector and multiply by desired speed magnitude
+        val speedX = (dirX / magnitude) * projectileSpeedMagnitude
+        val speedY = (dirY / magnitude) * projectileSpeedMagnitude
+
+        projectiles.add(Projectile(projectileStartX, projectileStartY, projectileRadius, speedX, speedY, projectileColor))
+
+        // NEW: Play shoot sound effect
+        if (shootSoundId != 0) {
+            soundPool.play(shootSoundId, 1f, 1f, 0, 0, 1f)
+        } else {
+            Log.w("GameView", "Shoot sound not loaded, cannot play.")
+        }
+    }
+
+
+    // --- NEW: Draws all active projectiles on the canvas. ---
+    /**
+     * Draws all active projectiles on the canvas.
+     * @param canvas The canvas to draw on.
+     */
+    private fun drawProjectiles(canvas: Canvas) {
+        for (projectile in projectiles) {
+            projectile.draw(canvas, paint)
+        }
     }
 
     // Extension function to convert MotionEvent action to string for better logging

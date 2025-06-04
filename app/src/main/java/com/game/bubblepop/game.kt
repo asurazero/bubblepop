@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.game.bubblepop.MainActivity.GameModeStates
+import com.game.bubblepop.MainActivity.GameModeStates.isTurretModeActive
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -55,6 +56,8 @@ class Game(
 
     interface RedrawListener {
         fun onRedrawRequested()
+        fun onReplenishAmmo()
+        fun onReplenishHalfAmmo()
     }
 
     var redrawListener: RedrawListener? = null
@@ -800,6 +803,7 @@ class Game(
 
 
         for (bubble in bubbles.toList()) {
+
             try {
                 val bubbleRect = RectF(bubble.x - bubble.radius, bubble.y - bubble.radius, bubble.x + bubble.radius, bubble.y + bubble.radius)
                 if (GameModeStates.isSpikeTrapModeActive) {
@@ -826,18 +830,33 @@ class Game(
                 }
                 // Regular bubble movement and shrinking
                 if (bubble.bubbleType == BubbleType.NORMAL || bubble.bubbleType == BubbleType.POWER_UP) {
-                    if (bubble.y > screenHeight / 2) {
-                        bubble.radius -= currentBubbleGrowthRate * (currentTime - (bubble.creationTime + (currentTime - lastUpdateTime))) * shrinkingSpeedMultiplier
-                        if (bubble.radius <= 0) {
-                            bubblesToRemove.add(bubble)
-                            continue
+                    // --- NEW: Add this conditional check for turret mode ---
+                    // --- NEW/MODIFIED LOGIC FOR MISSED BUBBLES ---
+                    // Check if the bubble has gone off the bottom of the screen
+                    if (bubble.y - bubble.radius > gameHeight&&isTurretModeActive) { // Use gameHeight for the bottom boundary
+                        if (bubble.bubbleType == BubbleType.NORMAL) {
+                            missedBubbles++ // Increment missed count only for normal/power-up bubbles
+                            Log.d("Game", "Bubble missed! Total missed: $missedBubbles") // Log for debugging
                         }
-                    } else {
-                        bubble.radius += currentBubbleGrowthRate * (currentTime - (bubble.creationTime + (currentTime - lastUpdateTime)))
-                        if (bubble.radius > maxBubbleRadius) {
-                            bubble.radius = maxBubbleRadius
+                        bubblesToRemove.add(bubble) // Mark for removal
+                        continue // Skip further processing for this bubble
+                    }
+                    if (!isTurretModeActive) { // Only shrink if turret mode is NOT active
+                        if (bubble.y > screenHeight / 2) {
+                            bubble.radius -= currentBubbleGrowthRate * (currentTime - (bubble.creationTime + (currentTime - lastUpdateTime))) * shrinkingSpeedMultiplier
+                            if (bubble.radius <= 0) {
+                                bubblesToRemove.add(bubble)
+                                continue // Skip to the next bubble as this one is removed
+                            }
+                        } else {
+                            bubble.radius += currentBubbleGrowthRate * (currentTime - (bubble.creationTime + (currentTime - lastUpdateTime)))
+                            if (bubble.radius > maxBubbleRadius) {
+                                bubble.radius = maxBubbleRadius
+                            }
                         }
                     }
+                    // --- END NEW conditional check ---
+
 
                     if (level > 50) {
                         bubble.isRed = false
@@ -1142,7 +1161,15 @@ class Game(
                 greenRectangleEndTime = System.currentTimeMillis() + greenRectangleDuration
                 rectangleRiseSpeed = greenRectangleDescentSpeed
                 Log.d("Game", "Extra Life activated!  endTime: $greenRectangleEndTime")
-                showPowerUpText("Reverse Rectangle") // Show "Extra Life" text
+                if(!MainActivity.GameModeStates.isTurretModeActive) {
+                    showPowerUpText("Reverse Rectangle") // Show "Extra Life" text
+                }
+
+                if (MainActivity.GameModeStates.isTurretModeActive) {
+                    showPowerUpText("Full Ammo")
+                    redrawListener?.onReplenishAmmo() // Call the new method on GameView
+                    Log.d("Game", "Ammo replenished due to Extra Life power-up!")
+                }
                 redrawListener?.onRedrawRequested()
             }
             PowerUpType.GROWTH_STOPPER -> {
@@ -1166,6 +1193,11 @@ class Game(
                 greenRectangleEndTime = System.currentTimeMillis() + greenRectangleDuration
                 if(MainActivity.GameModeStates.isPowerUpModeActive){
                     greenRectangleEndTime=2000
+                }
+                // --- NEW LOGIC FOR HALF AMMO REPLENISHMENT ---
+                if (MainActivity.GameModeStates.isTurretModeActive) {
+
+                    redrawListener?.onReplenishHalfAmmo() // Assuming you'll add this to GameView.kt
                 }
                 Log.d("Game", "Green Rectangle activated!  endTime: $greenRectangleEndTime")
                 // Show "Green Rectangle" text
