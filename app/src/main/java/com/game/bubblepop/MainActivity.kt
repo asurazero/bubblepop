@@ -44,7 +44,7 @@ import java.io.Serializable
 class MainActivity : AppCompatActivity(), ScoreListener {
     // GameModeStates object to hold game mode states
     object GameModeStates {
-        var debugMode = true
+        var debugMode = false
         var isChaosModeActive = false
         var isSplitModeActive = false
         var isPowerUpModeActive = false
@@ -403,7 +403,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
 
         isLoadingAd = true
         val adRequest = AdRequest.Builder().build()
-        val adUnitId = getString(R.string.inter_test)
+        val adUnitId = getString(R.string.interstitial_id)
         InterstitialAd.load(
             this, // Assuming this code is within an Activity or Fragment
             adUnitId.toString(),
