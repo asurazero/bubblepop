@@ -45,9 +45,12 @@ class Game(
     fun setGameActive(isActive: Boolean) {
         gameActive = isActive
     }
-
+    interface AdListener {
+        fun onGameEndAndLoadAd()
+    }
     interface GameOverListener {
         fun onGameOver(isNewHighScore: Boolean, score: Int)
+        
     }
 
     interface MissedBubbleChangeListener {

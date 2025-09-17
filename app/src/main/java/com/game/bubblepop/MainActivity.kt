@@ -21,6 +21,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.game.bubblepop.Game.AdListener
 import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.LoadAdError
@@ -41,10 +42,10 @@ import com.google.firebase.analytics.setConsent
 import java.io.Serializable
 
 //  ScoreListener is in interfaces.kt
-class MainActivity : AppCompatActivity(), ScoreListener {
+class MainActivity : AppCompatActivity(), ScoreListener,AdListener {
     // GameModeStates object to hold game mode states
     object GameModeStates {
-        var debugMode = true
+        var debugMode = false
         var isChaosModeActive = false
         var isSplitModeActive = false
         var isPowerUpModeActive = false
@@ -231,10 +232,6 @@ class MainActivity : AppCompatActivity(), ScoreListener {
 
                 startGamePlay(intent)
                 println("Ad Load State: $adLoaded")
-                if(!adLoaded){
-                    loadInterstitialAd()
-                }
-
             }
         }
         umpConsentButton.setOnClickListener {
@@ -286,18 +283,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         // Initial UI update after onCreate
         updateLevelUI()
     }
-    private fun startGamePlay() {
-        adShowAttempted = false // Reset the flag for a new game attempt
-        val intent = Intent(this, GamePlay::class.java)
-        gameStarted = true // Set gameStarted to true when a new game begins
 
-        if (adLoaded && !adShowAttempted) {
-            showInterstitialAd()
-        } else {
-            Log.d("MainActivity", "Ad not loaded or already attempted at game start.")
-            startActivityForResult(intent, 123) // Start GamePlay even if ad isn't ready
-        }
-    }
     private fun updateFirebaseAnalyticsConsent(granted: Boolean = consentInformation.canRequestAds()) {
         val consentMap = mutableMapOf<ConsentType, ConsentStatus>().apply {
             val consentStatus = if (granted) ConsentStatus.GRANTED else ConsentStatus.DENIED
@@ -310,16 +296,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
         Log.d("UMP", "Firebase Analytics consent updated. Granted: $granted")
     }
 
-    private fun startGame() {
-        gameStarted = true
-        GameModeStates.gameover = false
-        adShowAttempted = false
-        adLoaded = false
-        // Delay the ad load slightly to prioritize a potentially already loaded ad
-        handler.postDelayed({
-            loadInterstitialAd()
-        }, 500) // 500ms delay
-    }
+
 
     private fun startGamePlay(intent: Intent){
         startActivityForResult(intent, 123)
@@ -403,7 +380,7 @@ class MainActivity : AppCompatActivity(), ScoreListener {
 
         isLoadingAd = true
         val adRequest = AdRequest.Builder().build()
-        val adUnitId = getString(R.string.inter_test)
+        val adUnitId = getString(R.string.interstitial_id)
         InterstitialAd.load(
             this, // Assuming this code is within an Activity or Fragment
             adUnitId.toString(),
@@ -810,7 +787,10 @@ class MainActivity : AppCompatActivity(), ScoreListener {
     fun setLevelTextView(level: Int) { // Changed the name to setLevelTextView
         levelTextView.text = "Level: $level"
     }
-
+    override fun onGameEndAndLoadAd() {
+        Log.d("MainActivity", "onGameEndAndLoadAd() called. Attempting to load new ad.")
+        loadInterstitialAd()
+    }
     override fun onDestroy() {
         super.onDestroy()
         soundPool?.release()
