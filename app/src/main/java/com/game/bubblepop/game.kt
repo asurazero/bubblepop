@@ -46,6 +46,7 @@ class Game(
         gameActive = isActive
     }
     interface AdListener {
+
         fun onGameEndAndLoadAd()
     }
     interface GameOverListener {
@@ -361,7 +362,7 @@ class Game(
 
     fun update(deltaTime: Long) {
         val currentBlocksSnapshot = squareBlocks.toList()
-        println("block mode check ${GameModeStates.isBlockModeActive}")
+        //println("block mode check ${GameModeStates.isBlockModeActive}")
         if (squareBlocksToAdd.isNotEmpty()) {
             squareBlocks.addAll(squareBlocksToAdd)
             squareBlocksToAdd.clear()
@@ -409,7 +410,7 @@ class Game(
         // Square Blocks: Move vertically if not stopped
         // The inner loop for ground collision was removed from here.
         // Ground collision is now handled in its own dedicated section below.
-        Log.d("BlockUpdateDebug", "Processing ${currentBlocksSnapshot.size} blocks this frame.")
+       // Log.d("BlockUpdateDebug", "Processing ${currentBlocksSnapshot.size} blocks this frame.")
         for (block in currentBlocksSnapshot) { // <-- MODIFIED HERE
             if (!block.isStopped) {
                 block.moveVertically(deltaTime)
@@ -506,7 +507,7 @@ class Game(
         // Ensure `bubblesToRemove` is a class member or passed appropriately.
         val bubblesToRemove = mutableListOf<Bubble>() // Keep this line if it's a local variable for this function
 
-        Log.d("CollisionDebug", "Checking collision. Number of bubbles: ${bubbles.size}, Number of stopped blocks: ${squareBlocks.count { it.isStopped }}")
+        //Log.d("CollisionDebug", "Checking collision. Number of bubbles: ${bubbles.size}, Number of stopped blocks: ${squareBlocks.count { it.isStopped }}")
 
         // Iterate over a copy of bubbles to safely modify the original list.
         val bubblesToProcessForCollision = bubbles.toList()
@@ -1331,6 +1332,7 @@ class Game(
     }
 
     fun isGameOver(): Boolean {
+
         return !gameActive
     }
     fun isDraggingBomb(): Boolean {

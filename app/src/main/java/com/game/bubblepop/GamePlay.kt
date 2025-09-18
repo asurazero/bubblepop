@@ -8,6 +8,7 @@ import android.view.View
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import com.game.bubblepop.Game.GameOverListener
 import com.game.bubblepop.MainActivity.GameModeStates
 
 class GamePlay : AppCompatActivity(), Game.MissedBubbleChangeListener,
@@ -65,12 +66,19 @@ class GamePlay : AppCompatActivity(), Game.MissedBubbleChangeListener,
         }
     }
 
+
     override fun onMissedBubbleCountChanged(newCount: Int) {
         gameView.invalidate()
     }
+    interface AdListener {
 
+        fun onGameEndAndLoadAd()
+    }
     override fun onGameOver(isNewHighScore: Boolean, score: Int) {
+
+        var adListener: AdListener? = null // The listener instance
         runOnUiThread {
+            //adListener?.onGameEndAndLoadAd()
             isGameOver = true
             isReadyToEnd = false
             GameModeStates.gameover = true
@@ -81,6 +89,7 @@ class GamePlay : AppCompatActivity(), Game.MissedBubbleChangeListener,
             } else {
                 "Game Over!\nScore: $score"
             }
+
             localScore = score
             Game.appWideGameData.playerXP = score
             gameOverTextView.text = gameOverMessage
@@ -94,11 +103,13 @@ class GamePlay : AppCompatActivity(), Game.MissedBubbleChangeListener,
                 val resultIntent = Intent()
                 resultIntent.putExtra("finalScore", localScore)
                 setResult(RESULT_OK, resultIntent)
+
                 finish() // This will return to MainActivity and trigger onActivityResult
             }
             // --- END ADDITION ---
 
             isReadyToEnd = true
+           // Trigger ad loading
         }
         println("  Game Over in Activity! Score: $score, New High Score: $isNewHighScore  ")
     }
