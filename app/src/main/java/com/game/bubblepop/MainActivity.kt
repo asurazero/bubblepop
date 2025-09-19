@@ -63,6 +63,7 @@ class MainActivity : AppCompatActivity(), ScoreListener, GamePlay.AdListener {
         var unlockedForTesting = mutableSetOf("No Mutator", "Split", "Chaos")
         var gameover = false
         var timeToShowAd=true
+        var pendingMutatorUnlock=false
         // Function to get available mutators based on level
         fun getAvailableMutators(level: Int, levelUpThresholds: Map<Int, String>): Set<String> {
             val availableMutators = mutableSetOf("No Mutator") // Always include "No Mutator"
@@ -70,6 +71,8 @@ class MainActivity : AppCompatActivity(), ScoreListener, GamePlay.AdListener {
                 if (level >= unlockLevel) {
                     availableMutators.add(mutatorName)
                     unlockedMutators = availableMutators
+                    pendingMutatorUnlock=true
+
                 }
             }
             return availableMutators
@@ -106,7 +109,8 @@ class MainActivity : AppCompatActivity(), ScoreListener, GamePlay.AdListener {
             field = value
             previousLevel = value //update previous level
         }
-    private val xpPerScore = 1f
+    // TODO revert this to default
+    private val xpPerScore = 1f// Adjust for level frequency Default 1f
     private val levelUpThresholds = mapOf(
         2 to "Split",
         5 to "Chaos",
@@ -121,7 +125,10 @@ class MainActivity : AppCompatActivity(), ScoreListener, GamePlay.AdListener {
     private var isLevelUpInProgress = false //track level up
     private var previousLevel = 1 //keep track of the previous level
     private var dataLoaded = false // Track if data is loaded
-
+    private val handlertooltip = Handler(Looper.getMainLooper())
+    private val hideTooltipRunnable = Runnable {
+        findViewById<TextView>(R.id.mutatornotiftext).visibility = View.GONE
+    }
     @SuppressLint("SuspiciousIndentation")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -147,8 +154,8 @@ class MainActivity : AppCompatActivity(), ScoreListener, GamePlay.AdListener {
 
         // Initialize and set up UI elements
         val scoresButton = findViewById<ImageView>(R.id.scoresbutton)
-        val scoreDisplay = findViewById<ImageView>(R.id.scoredisplay)
         val settingsButton = findViewById<ImageView>(R.id.settingsbutton)
+        val scoreDisplay = findViewById<ImageView>(R.id.scoredisplay)
         val scoreDisplayText = findViewById<TextView>(R.id.textViewscoredisp)
 
         val gainLevelButton = findViewById<Button>(R.id.gainlevelbutton)
@@ -190,7 +197,7 @@ class MainActivity : AppCompatActivity(), ScoreListener, GamePlay.AdListener {
                         println(GameModeStates.gameover)
                         if(GameModeStates.gameover==true) {
                             println("from consent ad load")
-                            loadInterstitialAd()
+                            //loadInterstitialAd()
                         }// Load the first interstitial ad here
                     } else {
                         umpConsentButton.visibility = View.VISIBLE
@@ -378,6 +385,7 @@ class MainActivity : AppCompatActivity(), ScoreListener, GamePlay.AdListener {
                         GameModeStates.isLoadingAd = false
                         lastAdLoadAttemptTime = System.currentTimeMillis()
                         GameModeStates.LoadedAdShown=true
+                        startButtonChecker()
                     }
 
                     override fun onAdLoaded(interstitialAd: InterstitialAd) {
@@ -426,6 +434,10 @@ class MainActivity : AppCompatActivity(), ScoreListener, GamePlay.AdListener {
             GameModeStates.timeToShowAd = false
             GameModeStates.isLoadingAd = false
             GameModeStates.LoadedAdShown=true
+
+            mutatorToolTip()
+
+
             startButtonChecker()
         } else {
             Log.d("AdMob", "Interstitial ad was not ready to show.")
@@ -577,7 +589,9 @@ class MainActivity : AppCompatActivity(), ScoreListener, GamePlay.AdListener {
         }
 
         if (playerLeveledUp) {
+
             Log.d("MainActivity", "Player Leveled Up!  updateLevelUI")
+
         } else {
             Log.d("MainActivity", "Player did NOT level up.")
         }
@@ -720,7 +734,7 @@ class MainActivity : AppCompatActivity(), ScoreListener, GamePlay.AdListener {
         val nextUnlockLevel = levelUpThresholds.keys.sorted().find { it > currentLevel }
         if (nextUnlockLevel != null) {
             val mutatorName = levelUpThresholds[nextUnlockLevel]
-            nextUnlockTextView.text = "Next Unlock: Level $nextUnlockLevel - $mutatorName"
+            nextUnlockTextView.text = "Next Unlock: Level $nextUnlockLevel - $mutatorName\n\nCheck Settings To Select A Different Mutator"
         } else {
             nextUnlockTextView.text = "All mutators unlocked \nUntil Next Update!"
         }
@@ -785,6 +799,30 @@ class MainActivity : AppCompatActivity(), ScoreListener, GamePlay.AdListener {
         super.onDestroy()
         soundPool?.release()
         soundPool = null
+    }
+
+    private fun mutatorToolTip() {
+        if (GameModeStates.pendingMutatorUnlock) {
+            println("ran mutator tool tip")
+            soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f)
+            val toolTipText = findViewById<TextView>(R.id.mutatornotiftext)
+            toolTipText.text = "You've Unlocked A Mutator, Check Settings To Try It Out"
+
+            // Make the tooltip visible
+            toolTipText.visibility = View.VISIBLE
+            GameModeStates.pendingMutatorUnlock = false
+
+            // Start the timer to hide the text after 4 seconds
+            handler.postDelayed(hideTooltipRunnable, 40000L) // 4000L = 4 seconds
+
+            toolTipText.setOnClickListener {
+                // Cancel the timer if the user taps the text
+                handler.removeCallbacks(hideTooltipRunnable)
+
+                soundPool?.play(popSoundId, 1f, 1f, 0, 0, 1f)
+                toolTipText.visibility = View.GONE
+            }
+        }
     }
     private fun startButtonChecker(){
         val startButtonText=findViewById<TextView>(R.id.textViewstartbutton)

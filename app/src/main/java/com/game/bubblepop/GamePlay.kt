@@ -2,6 +2,8 @@ package com.game.bubblepop
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
@@ -10,6 +12,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import com.game.bubblepop.Game.GameOverListener
 import com.game.bubblepop.MainActivity.GameModeStates
+
 
 class GamePlay : AppCompatActivity(), Game.MissedBubbleChangeListener,
     Game.GameOverListener {
@@ -74,11 +77,20 @@ class GamePlay : AppCompatActivity(), Game.MissedBubbleChangeListener,
 
         fun onGameEndAndLoadAd()
     }
-    override fun onGameOver(isNewHighScore: Boolean, score: Int) {
+    private val handler = Handler(Looper.getMainLooper())
+    private val continueRunnable = Runnable {
+        Log.d("GamePlay", "Timer elapsed. Automatically continuing game.")
+        // This is the same logic as your click listener
+        val resultIntent = Intent()
+        resultIntent.putExtra("finalScore", localScore)
+        setResult(RESULT_OK, resultIntent)
+        finish()
+    }
 
-        var adListener: AdListener? = null // The listener instance
+    override fun onGameOver(isNewHighScore: Boolean, score: Int) {
+        // ... (your existing code) ...
+
         runOnUiThread {
-            //adListener?.onGameEndAndLoadAd()
             isGameOver = true
             isReadyToEnd = false
             GameModeStates.gameover = true
@@ -97,19 +109,23 @@ class GamePlay : AppCompatActivity(), Game.MissedBubbleChangeListener,
             continueMessageTextView.visibility = View.GONE
             gameView.invalidate() // Redraw to show the game over text.
 
-            // --- ADD THIS CLICK LISTENER ---
+            // --- MODIFY THIS CLICK LISTENER ---
             gameOverTextView.setOnClickListener {
                 Log.d("GamePlay", "Game Over screen clicked! Finishing activity to return to Main Menu.")
+                // Remove the pending timer when the button is clicked manually
+                handler.removeCallbacks(continueRunnable)
                 val resultIntent = Intent()
                 resultIntent.putExtra("finalScore", localScore)
                 setResult(RESULT_OK, resultIntent)
-
                 finish() // This will return to MainActivity and trigger onActivityResult
             }
-            // --- END ADDITION ---
+
+            // --- ADD THE TIMER HERE ---
+            // The timer will trigger after 10 seconds (10000 milliseconds)
+            handler.postDelayed(continueRunnable, 3000L)
 
             isReadyToEnd = true
-           // Trigger ad loading
+            // Trigger ad loading
         }
         println("  Game Over in Activity! Score: $score, New High Score: $isNewHighScore  ")
     }
