@@ -109,7 +109,7 @@ class MainActivity : AppCompatActivity(), ScoreListener, GamePlay.AdListener {
             field = value
             previousLevel = value //update previous level
         }
-    // TODO revert this to default
+
     private val xpPerScore = 1f// Adjust for level frequency Default 1f
     private val levelUpThresholds = mapOf(
         2 to "Split",
